@@ -16,6 +16,7 @@ import { GraphiqlPlugin } from "@vendure/graphiql-plugin";
 import "dotenv/config";
 import path from "path";
 import { CmsBasePlugin } from "./plugins/cms-base/cms-base.plugin";
+import { StoryblokPlugin } from './plugins/storyblok/storyblok.plugin';
 
 const IS_DEV = process.env.APP_ENV === "dev";
 const serverPort = +process.env.PORT || 3000;
@@ -105,5 +106,6 @@ export const config: VendureConfig = {
       },
     }),
     CmsBasePlugin.init({}),
-  ],
+      StoryblokPlugin.init({}),
+],
 };
