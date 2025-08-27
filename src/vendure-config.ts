@@ -15,8 +15,7 @@ import { AdminUiPlugin } from "@vendure/admin-ui-plugin";
 import { GraphiqlPlugin } from "@vendure/graphiql-plugin";
 import "dotenv/config";
 import path from "path";
-import { CmsBasePlugin } from "./plugins/cms-base/cms-base.plugin";
-import { StoryblokPlugin } from './plugins/storyblok/storyblok.plugin';
+import { CmsPlugin } from "./plugins/cms/cms.plugin";
 
 const IS_DEV = process.env.APP_ENV === "dev";
 const serverPort = +process.env.PORT || 3000;
@@ -48,18 +47,26 @@ export const config: VendureConfig = {
     },
   },
   dbConnectionOptions: {
-    type: "postgres",
+    // type: "postgres",
+    // // See the README.md "Migrations" section for an explanation of
+    // // the `synchronize` and `migrations` options.
+    // synchronize: true,
+    // migrations: [path.join(__dirname, "./migrations/*.+(js|ts)")],
+    // logging: false,
+    // database: process.env.DB_NAME,
+    // schema: process.env.DB_SCHEMA,
+    // host: process.env.DB_HOST,
+    // port: +process.env.DB_PORT,
+    // username: process.env.DB_USERNAME,
+    // password: process.env.DB_PASSWORD,
+    //   dbConnectionOptions: {
+    type: "better-sqlite3",
     // See the README.md "Migrations" section for an explanation of
     // the `synchronize` and `migrations` options.
-    synchronize: true,
+    synchronize: false,
     migrations: [path.join(__dirname, "./migrations/*.+(js|ts)")],
     logging: false,
-    database: process.env.DB_NAME,
-    schema: process.env.DB_SCHEMA,
-    host: process.env.DB_HOST,
-    port: +process.env.DB_PORT,
-    username: process.env.DB_USERNAME,
-    password: process.env.DB_PASSWORD,
+    database: path.join(__dirname, "../vendure.sqlite"),
   },
   paymentOptions: {
     paymentMethodHandlers: [dummyPaymentHandler],
@@ -105,7 +112,6 @@ export const config: VendureConfig = {
         apiPort: serverPort,
       },
     }),
-    CmsBasePlugin.init({}),
-      StoryblokPlugin.init({}),
-],
+    CmsPlugin.init({}),
+  ],
 };

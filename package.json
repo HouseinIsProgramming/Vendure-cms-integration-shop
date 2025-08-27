@@ -9,7 +9,8 @@
     "build": "tsc",
     "start:server": "node ./dist/index.js",
     "start:worker": "node ./dist/index-worker.js",
-    "start": "concurrently npm:start:*"
+    "start": "concurrently npm:start:*",
+    "populate": "ts-node ./src/populate.ts"
   },
   "dependencies": {
     "@vendure/admin-ui-plugin": "3.4.1",
@@ -18,6 +19,7 @@
     "@vendure/dashboard": "^3.4.1",
     "@vendure/email-plugin": "3.4.1",
     "@vendure/graphiql-plugin": "3.4.1",
+    "better-sqlite3": "^12.2.0",
     "dotenv": "17.2.1",
     "pg": "8.16.3"
   },
