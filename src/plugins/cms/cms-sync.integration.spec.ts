@@ -2,35 +2,35 @@ import { Test } from "@nestjs/testing";
 import { Logger, TransactionalConnection } from "@vendure/core";
 import { CmsSyncService } from "./cms-sync.service";
 import { SyncJobData } from "./types";
+import { vi, MockedFunction } from 'vitest';
+
+interface MockRepository {
+  findOne: MockedFunction<(options: any) => Promise<Product | ProductVariant | Collection | null>>;
+}
+
+interface MockConnection {
+  getRepository: MockedFunction<(entity: any) => MockRepository>;
+}
 
 describe("CmsSyncService Integration Tests", () => {
   let service: CmsSyncService;
-  let mockConnection: { getRepository: jest.Mock };
-  let mockRepository: { findOne: jest.Mock };
-  let loggerSpy: jest.SpyInstance;
+  let mockConnection: MockConnection;
+  let mockRepository: MockRepository;
+  let loggerSpy: ReturnType<typeof vi.spyOn>;
 
   beforeAll(async () => {
     // Create a more sophisticated mock that could interact with real data if available
     mockRepository = {
-      findOne: jest.fn(),
+      findOne: vi.fn(),
     };
 
     mockConnection = {
-      getRepository: jest.fn().mockReturnValue(mockRepository),
+      getRepository: vi.fn().mockReturnValue(mockRepository),
     };
 
-    const module = await Test.createTestingModule({
-      providers: [
-        CmsSyncService,
-        {
-          provide: TransactionalConnection,
-          useValue: mockConnection,
-        },
-      ],
-    }).compile();
-
-    service = module.get<CmsSyncService>(CmsSyncService);
-    loggerSpy = jest.spyOn(Logger, "info").mockImplementation();
+    // Direct service instantiation with mock connection
+    service = new CmsSyncService(mockConnection as TransactionalConnection);
+    loggerSpy = vi.spyOn(Logger, "info").mockImplementation(() => {});
   });
 
   afterAll(async () => {
@@ -43,7 +43,7 @@ describe("CmsSyncService Integration Tests", () => {
     if (loggerSpy) {
       loggerSpy.mockClear();
     }
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   it("should demonstrate real-world entity structure with realistic data", async () => {

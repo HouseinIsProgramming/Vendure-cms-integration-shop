@@ -9,43 +9,43 @@ import {
 import { LanguageCode } from "@vendure/common/lib/generated-types";
 import { CmsSyncService } from "./cms-sync.service";
 import { SyncJobData } from "./types";
+import { vi, MockedFunction } from 'vitest';
+
+interface MockRepository {
+  findOne: MockedFunction<(options: any) => Promise<Product | ProductVariant | Collection | null>>;
+}
+
+interface MockConnection {
+  getRepository: MockedFunction<(entity: any) => MockRepository>;
+}
 
 describe("CmsSyncService", () => {
   let service: CmsSyncService;
-  let loggerSpy: jest.SpyInstance;
-  let mockConnection: { getRepository: jest.Mock };
-  let mockRepository: { findOne: jest.Mock };
+  let loggerSpy: ReturnType<typeof vi.spyOn>;
+  let mockConnection: MockConnection;
+  let mockRepository: MockRepository;
 
   beforeEach(async () => {
     // Create mock repository with findOne method
     mockRepository = {
-      findOne: jest.fn(),
+      findOne: vi.fn(),
     };
 
     // Create mock connection that returns our mock repository
     mockConnection = {
-      getRepository: jest.fn().mockReturnValue(mockRepository),
+      getRepository: vi.fn().mockReturnValue(mockRepository),
     };
 
-    const module = await Test.createTestingModule({
-      providers: [
-        CmsSyncService,
-        {
-          provide: TransactionalConnection,
-          useValue: mockConnection,
-        },
-      ],
-    }).compile();
-
-    service = module.get<CmsSyncService>(CmsSyncService);
+    // Direct service instantiation with mock connection
+    service = new CmsSyncService(mockConnection as TransactionalConnection);
 
     // Spy on Logger.info method
-    loggerSpy = jest.spyOn(Logger, "info").mockImplementation();
+    loggerSpy = vi.spyOn(Logger, "info").mockImplementation(() => {});
   });
 
   afterEach(() => {
     loggerSpy.mockRestore();
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   // Helper function to create mock Product entity
