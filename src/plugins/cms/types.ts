@@ -21,12 +21,11 @@ export interface SyncJobData {
     operationType: 'create' | 'update' | 'delete';
     vendureData: {
         id: string;
-        title: string;
-        slug: string;
-        translations?: Array<{
+        translations: Array<{
             languageCode: string;
             name: string;
-            slug: string;
+            slug?: string; // Optional because ProductVariants don't have slugs
+            description?: string; // Available in Product and Collection translations
         }>;
     };
     timestamp: string;

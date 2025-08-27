@@ -31,13 +31,12 @@ describe('CmsSyncService', () => {
                 operationType: 'create',
                 vendureData: {
                     id: '1',
-                    title: 'Test Product',
-                    slug: 'test-product',
                     translations: [
                         {
                             languageCode: 'en',
                             name: 'Test Product',
-                            slug: 'test-product'
+                            slug: 'test-product',
+                            description: 'A test product description'
                         }
                     ]
                 },
@@ -63,8 +62,8 @@ describe('CmsSyncService', () => {
             // Verify the logged data contains expected product information
             const loggedMessage = loggerSpy.mock.calls[0][0];
             expect(loggedMessage).toContain('"id": "1"');
-            expect(loggedMessage).toContain('"title": "Test Product"');
             expect(loggedMessage).toContain('"operation": "create"');
+            expect(loggedMessage).toContain('"name": "Test Product"');
         });
 
         it('should handle different operation types correctly', async () => {
@@ -75,9 +74,14 @@ describe('CmsSyncService', () => {
                 operationType: 'update',
                 vendureData: {
                     id: '2',
-                    title: 'Updated Product',
-                    slug: 'updated-product',
-                    translations: []
+                    translations: [
+                        {
+                            languageCode: 'en',
+                            name: 'Updated Product',
+                            slug: 'updated-product',
+                            description: 'Updated description'
+                        }
+                    ]
                 },
                 timestamp: '2025-08-27T10:53:00.000Z',
                 retryCount: 0
@@ -104,18 +108,18 @@ describe('CmsSyncService', () => {
                 operationType: 'update',
                 vendureData: {
                     id: '3',
-                    title: 'Multilingual Product',
-                    slug: 'multilingual-product',
                     translations: [
                         {
                             languageCode: 'en',
                             name: 'Multilingual Product',
-                            slug: 'multilingual-product'
+                            slug: 'multilingual-product',
+                            description: 'English description'
                         },
                         {
                             languageCode: 'es',
                             name: 'Producto Multilingüe',
-                            slug: 'producto-multilingue'
+                            slug: 'producto-multilingue',
+                            description: 'Descripción en español'
                         }
                     ]
                 },
@@ -146,13 +150,10 @@ describe('CmsSyncService', () => {
                 operationType: 'create',
                 vendureData: {
                     id: '10',
-                    title: 'Test Variant - Red Large',
-                    slug: 'test-variant-red-large',
                     translations: [
                         {
                             languageCode: 'en',
-                            name: 'Test Variant - Red Large',
-                            slug: 'test-variant-red-large'
+                            name: 'Test Variant - Red Large'
                         }
                     ]
                 },
@@ -178,8 +179,8 @@ describe('CmsSyncService', () => {
             // Verify the logged data contains expected variant information
             const loggedMessage = loggerSpy.mock.calls[0][0];
             expect(loggedMessage).toContain('"id": "10"');
-            expect(loggedMessage).toContain('"title": "Test Variant - Red Large"');
             expect(loggedMessage).toContain('"operation": "create"');
+            expect(loggedMessage).toContain('"name": "Test Variant - Red Large"');
         });
 
         it('should handle variant update operations correctly', async () => {
@@ -190,18 +191,14 @@ describe('CmsSyncService', () => {
                 operationType: 'update',
                 vendureData: {
                     id: '11',
-                    title: 'Updated Variant - Blue Medium',
-                    slug: 'updated-variant-blue-medium',
                     translations: [
                         {
                             languageCode: 'en',
-                            name: 'Updated Variant - Blue Medium',
-                            slug: 'updated-variant-blue-medium'
+                            name: 'Updated Variant - Blue Medium'
                         },
                         {
                             languageCode: 'es',
-                            name: 'Variante Actualizada - Azul Mediano',
-                            slug: 'variante-actualizada-azul-mediano'
+                            name: 'Variante Actualizada - Azul Mediano'
                         }
                     ]
                 },
@@ -237,13 +234,12 @@ describe('CmsSyncService', () => {
                 operationType: 'create',
                 vendureData: {
                     id: '20',
-                    title: 'Electronics Collection',
-                    slug: 'electronics-collection',
                     translations: [
                         {
                             languageCode: 'en',
                             name: 'Electronics Collection',
-                            slug: 'electronics-collection'
+                            slug: 'electronics-collection',
+                            description: 'All electronic products'
                         }
                     ]
                 },
@@ -269,8 +265,8 @@ describe('CmsSyncService', () => {
             // Verify the logged data contains expected collection information
             const loggedMessage = loggerSpy.mock.calls[0][0];
             expect(loggedMessage).toContain('"id": "20"');
-            expect(loggedMessage).toContain('"title": "Electronics Collection"');
             expect(loggedMessage).toContain('"operation": "create"');
+            expect(loggedMessage).toContain('"name": "Electronics Collection"');
         });
 
         it('should handle collection delete operations correctly', async () => {
@@ -281,9 +277,14 @@ describe('CmsSyncService', () => {
                 operationType: 'delete',
                 vendureData: {
                     id: '21',
-                    title: 'Deprecated Collection',
-                    slug: 'deprecated-collection',
-                    translations: []
+                    translations: [
+                        {
+                            languageCode: 'en',
+                            name: 'Deprecated Collection',
+                            slug: 'deprecated-collection',
+                            description: 'This collection is deprecated'
+                        }
+                    ]
                 },
                 timestamp: '2025-08-27T11:00:00.000Z',
                 retryCount: 0
@@ -310,23 +311,24 @@ describe('CmsSyncService', () => {
                 operationType: 'update',
                 vendureData: {
                     id: '22',
-                    title: 'Fashion Collection',
-                    slug: 'fashion-collection',
                     translations: [
                         {
                             languageCode: 'en',
                             name: 'Fashion Collection',
-                            slug: 'fashion-collection'
+                            slug: 'fashion-collection',
+                            description: 'Fashion and clothing items'
                         },
                         {
                             languageCode: 'es',
                             name: 'Colección de Moda',
-                            slug: 'coleccion-de-moda'
+                            slug: 'coleccion-de-moda',
+                            description: 'Artículos de moda y ropa'
                         },
                         {
                             languageCode: 'fr',
                             name: 'Collection Mode',
-                            slug: 'collection-mode'
+                            slug: 'collection-mode',
+                            description: 'Articles de mode et vêtements'
                         }
                     ]
                 },
