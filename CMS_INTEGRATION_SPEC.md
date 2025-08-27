@@ -347,7 +347,7 @@ export class CmsSyncResolver {
 
       // Direct sync call (immediate, no job queue)
       const syncData: SyncJobData = {
-        entityType: "product",
+        entityType: Product.name,
         entityId: product.id,
         operationType: "update",
         vendureData: {

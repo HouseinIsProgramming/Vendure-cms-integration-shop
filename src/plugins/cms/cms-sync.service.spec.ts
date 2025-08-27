@@ -9,10 +9,12 @@ import {
 import { LanguageCode } from "@vendure/common/lib/generated-types";
 import { CmsSyncService } from "./cms-sync.service";
 import { SyncJobData } from "./types";
-import { vi, MockedFunction } from 'vitest';
+import { vi, MockedFunction } from "vitest";
 
 interface MockRepository {
-  findOne: MockedFunction<(options: any) => Promise<Product | ProductVariant | Collection | null>>;
+  findOne: MockedFunction<
+    (options: any) => Promise<Product | ProductVariant | Collection | null>
+  >;
 }
 
 interface MockConnection {
@@ -106,7 +108,7 @@ describe("CmsSyncService", () => {
       mockRepository.findOne.mockResolvedValue(mockProduct);
 
       const mockJobData: SyncJobData = {
-        entityType: "product",
+        entityType: Product.name,
         entityId: "1",
         operationType: "create",
         timestamp: "2025-08-27T10:53:00.000Z",
@@ -147,7 +149,7 @@ describe("CmsSyncService", () => {
       mockRepository.findOne.mockResolvedValue(null);
 
       const mockJobData: SyncJobData = {
-        entityType: "product",
+        entityType: Product.name,
         entityId: "-999",
         operationType: "update",
         timestamp: "2025-08-27T10:53:00.000Z",
@@ -178,7 +180,7 @@ describe("CmsSyncService", () => {
       mockRepository.findOne.mockResolvedValue(mockProduct);
 
       const mockJobData: SyncJobData = {
-        entityType: "product",
+        entityType: Product.name,
         entityId: "2",
         operationType: "update",
         timestamp: "2025-08-27T10:53:00.000Z",
@@ -218,7 +220,7 @@ describe("CmsSyncService", () => {
       mockRepository.findOne.mockResolvedValue(mockProduct);
 
       const mockJobData: SyncJobData = {
-        entityType: "product",
+        entityType: Product.name,
         entityId: "3",
         operationType: "update",
         timestamp: "2025-08-27T10:53:00.000Z",
@@ -252,7 +254,7 @@ describe("CmsSyncService", () => {
       mockRepository.findOne.mockResolvedValue(mockVariant);
 
       const mockJobData: SyncJobData = {
-        entityType: "variant",
+        entityType: ProductVariant.name,
         entityId: "10",
         operationType: "create",
         timestamp: "2025-08-27T11:00:00.000Z",
@@ -293,7 +295,7 @@ describe("CmsSyncService", () => {
       mockRepository.findOne.mockResolvedValue(null);
 
       const mockJobData: SyncJobData = {
-        entityType: "variant",
+        entityType: ProductVariant.name,
         entityId: "999",
         operationType: "update",
         timestamp: "2025-08-27T11:00:00.000Z",
@@ -326,7 +328,7 @@ describe("CmsSyncService", () => {
       mockRepository.findOne.mockResolvedValue(mockCollection);
 
       const mockJobData: SyncJobData = {
-        entityType: "collection",
+        entityType: Collection.name,
         entityId: "20",
         operationType: "create",
         timestamp: "2025-08-27T11:00:00.000Z",
@@ -367,7 +369,7 @@ describe("CmsSyncService", () => {
       mockRepository.findOne.mockResolvedValue(null);
 
       const mockJobData: SyncJobData = {
-        entityType: "collection",
+        entityType: Collection.name,
         entityId: "999",
         operationType: "delete",
         timestamp: "2025-08-27T11:00:00.000Z",
@@ -410,7 +412,7 @@ describe("CmsSyncService", () => {
       mockRepository.findOne.mockResolvedValue(mockCollection);
 
       const mockJobData: SyncJobData = {
-        entityType: "collection",
+        entityType: Collection.name,
         entityId: "22",
         operationType: "update",
         timestamp: "2025-08-27T11:00:00.000Z",

@@ -5,8 +5,10 @@ import {
   PluginCommonModule,
   ProductEvent,
   ProductVariantEvent,
-  CollectionEvent,
+  Product,
   ProductVariant,
+  Collection,
+  CollectionEvent,
   Type,
   VendurePlugin,
   JobQueue,
@@ -159,7 +161,7 @@ export class CmsPlugin implements OnModuleInit {
 
   private extractSyncData(event: ProductEvent): SyncJobData {
     return {
-      entityType: "product",
+      entityType: Product.name,
       entityId: event.entity.id,
       operationType: this.mapEventTypeToOperation(event.type),
       timestamp: new Date().toISOString(),
@@ -172,7 +174,7 @@ export class CmsPlugin implements OnModuleInit {
     variant: ProductVariant,
   ): SyncJobData {
     return {
-      entityType: "variant",
+      entityType: ProductVariant.name,
       entityId: variant.id,
       operationType: this.mapEventTypeToOperation(event.type),
       timestamp: new Date().toISOString(),
@@ -182,7 +184,7 @@ export class CmsPlugin implements OnModuleInit {
 
   private extractCollectionSyncData(event: CollectionEvent): SyncJobData {
     return {
-      entityType: "collection",
+      entityType: Collection.name,
       entityId: event.entity.id,
       operationType: this.mapEventTypeToOperation(event.type),
       timestamp: new Date().toISOString(),

@@ -1,11 +1,18 @@
-import { Test } from "@nestjs/testing";
-import { Logger, TransactionalConnection } from "@vendure/core";
+import {
+  Logger,
+  TransactionalConnection,
+  Product,
+  ProductVariant,
+  Collection,
+} from "@vendure/core";
 import { CmsSyncService } from "./cms-sync.service";
 import { SyncJobData } from "./types";
-import { vi, MockedFunction } from 'vitest';
+import { vi, MockedFunction } from "vitest";
 
 interface MockRepository {
-  findOne: MockedFunction<(options: any) => Promise<Product | ProductVariant | Collection | null>>;
+  findOne: MockedFunction<
+    (options: any) => Promise<Product | ProductVariant | Collection | null>
+  >;
 }
 
 interface MockConnection {
@@ -76,7 +83,7 @@ describe("CmsSyncService Integration Tests", () => {
     mockRepository.findOne.mockResolvedValue(realisticProduct);
 
     const jobData: SyncJobData = {
-      entityType: "product",
+      entityType: Product.name,
       entityId: "1",
       operationType: "update",
       timestamp: new Date().toISOString(),
@@ -140,7 +147,7 @@ describe("CmsSyncService Integration Tests", () => {
     mockRepository.findOne.mockResolvedValue(realisticCollection);
 
     const jobData: SyncJobData = {
-      entityType: "collection",
+      entityType: Collection.name,
       entityId: "2",
       operationType: "create",
       timestamp: new Date().toISOString(),
@@ -185,7 +192,7 @@ describe("CmsSyncService Integration Tests", () => {
     mockRepository.findOne.mockResolvedValue(realisticVariant);
 
     const jobData: SyncJobData = {
-      entityType: "variant",
+      entityType: ProductVariant.name,
       entityId: "5",
       operationType: "update",
       timestamp: new Date().toISOString(),
@@ -212,7 +219,7 @@ describe("CmsSyncService Integration Tests", () => {
   it("should handle database connection patterns correctly", async () => {
     // This test verifies the database interaction patterns are correct
     const jobData: SyncJobData = {
-      entityType: "product",
+      entityType: Product.name,
       entityId: "123",
       operationType: "create",
       timestamp: new Date().toISOString(),

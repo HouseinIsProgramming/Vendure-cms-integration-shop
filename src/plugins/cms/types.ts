@@ -1,4 +1,5 @@
 import { ID } from "@vendure/common/lib/shared-types";
+import { Collection, Product, ProductVariant } from "@vendure/core";
 
 /**
  * @description
@@ -19,7 +20,7 @@ export interface PluginInitOptions {
  * Uses entity ID references for efficient serialization and storage.
  */
 export interface SyncJobData {
-  entityType: "product" | "variant" | "collection";
+  entityType: Product | ProductVariant | Collection | string;
   entityId: ID;
   operationType: "create" | "update" | "delete";
   timestamp: string;
