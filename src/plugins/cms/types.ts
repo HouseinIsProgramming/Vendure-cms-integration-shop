@@ -1,16 +1,16 @@
-import { ID } from '@vendure/common/lib/shared-types';
+import { ID } from "@vendure/common/lib/shared-types";
 
 /**
  * @description
  * The plugin can be configured using the following options:
  */
 export interface PluginInitOptions {
-    cmsApiUrl?: string;
-    cmsApiKey?: string;
-    retryAttempts?: number;
-    retryDelay?: number;
-    enableScheduledSync?: boolean;
-    scheduledSyncCron?: string;
+  cmsApiUrl?: string;
+  cmsApiKey?: string;
+  retryAttempts?: number;
+  retryDelay?: number;
+  enableScheduledSync?: boolean;
+  scheduledSyncCron?: string;
 }
 
 /**
@@ -19,11 +19,11 @@ export interface PluginInitOptions {
  * Uses entity ID references for efficient serialization and storage.
  */
 export interface SyncJobData {
-    entityType: 'product' | 'variant' | 'collection';
-    entityId: ID;
-    operationType: 'create' | 'update' | 'delete';
-    timestamp: string;
-    retryCount: number;
+  entityType: "product" | "variant" | "collection";
+  entityId: ID;
+  operationType: "create" | "update" | "delete";
+  timestamp: string;
+  retryCount: number;
 }
 
 /**
@@ -31,7 +31,7 @@ export interface SyncJobData {
  * Response type for manual sync operations
  */
 export interface SyncResponse {
-    success: boolean;
-    message: string;
-    timestamp?: Date;
+  success: boolean;
+  message: string;
+  timestamp?: Date;
 }
