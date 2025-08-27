@@ -1,19 +1,33 @@
 import { Injectable } from '@nestjs/common';
-import { Logger } from '@vendure/core';
+import { Logger, TransactionalConnection, Product, ProductVariant, Collection } from '@vendure/core';
 import { SyncJobData, SyncResponse } from './types';
 import { loggerCtx } from './constants';
 
 @Injectable()
 export class CmsSyncService {
 
+    constructor(
+        private connection: TransactionalConnection
+    ) {}
+
     async syncProductToCms(jobData: SyncJobData): Promise<SyncResponse> {
         try {
+            // Fetch fresh product data from database
+            const product = await this.connection.getRepository(Product).findOne({
+                where: { id: jobData.entityId },
+                relations: ['translations']
+            });
+
+            if (!product) {
+                throw new Error(`Product with ID ${jobData.entityId} not found`);
+            }
+
             Logger.info(
                 `[${loggerCtx}] Product ${jobData.operationType}: ${JSON.stringify({
-                    id: jobData.vendureData.id,
+                    id: product.id,
                     operation: jobData.operationType,
                     timestamp: jobData.timestamp,
-                    translations: jobData.vendureData.translations
+                    translations: product.translations
                 }, null, 2)}`
             );
 
@@ -23,11 +37,9 @@ export class CmsSyncService {
             // TODO: Replace with actual CMS API call
             // Example implementation:
             // const response = await this.cmsApiClient.post('/products', {
-            //     vendureId: jobData.vendureData.id,
-            //     vendureTitle: jobData.vendureData.title,
-            //     vendureSlug: jobData.vendureData.slug,
+            //     id: product.id,
             //     operation: jobData.operationType,
-            //     translations: jobData.vendureData.translations
+            //     translations: product.translations
             // });
 
             return {
@@ -51,12 +63,22 @@ export class CmsSyncService {
 
     async syncVariantToCms(jobData: SyncJobData): Promise<SyncResponse> {
         try {
+            // Fetch fresh variant data from database
+            const variant = await this.connection.getRepository(ProductVariant).findOne({
+                where: { id: jobData.entityId },
+                relations: ['translations']
+            });
+
+            if (!variant) {
+                throw new Error(`ProductVariant with ID ${jobData.entityId} not found`);
+            }
+
             Logger.info(
                 `[${loggerCtx}] Variant ${jobData.operationType}: ${JSON.stringify({
-                    id: jobData.vendureData.id,
+                    id: variant.id,
                     operation: jobData.operationType,
                     timestamp: jobData.timestamp,
-                    translations: jobData.vendureData.translations
+                    translations: variant.translations
                 }, null, 2)}`
             );
 
@@ -66,11 +88,9 @@ export class CmsSyncService {
             // TODO: Replace with actual CMS API call
             // Example implementation:
             // const response = await this.cmsApiClient.post('/variants', {
-            //     vendureId: jobData.vendureData.id,
-            //     vendureTitle: jobData.vendureData.title,
-            //     vendureSlug: jobData.vendureData.slug,
+            //     id: variant.id,
             //     operation: jobData.operationType,
-            //     translations: jobData.vendureData.translations
+            //     translations: variant.translations
             // });
 
             return {
@@ -94,12 +114,22 @@ export class CmsSyncService {
 
     async syncCollectionToCms(jobData: SyncJobData): Promise<SyncResponse> {
         try {
+            // Fetch fresh collection data from database
+            const collection = await this.connection.getRepository(Collection).findOne({
+                where: { id: jobData.entityId },
+                relations: ['translations']
+            });
+
+            if (!collection) {
+                throw new Error(`Collection with ID ${jobData.entityId} not found`);
+            }
+
             Logger.info(
                 `[${loggerCtx}] Collection ${jobData.operationType}: ${JSON.stringify({
-                    id: jobData.vendureData.id,
+                    id: collection.id,
                     operation: jobData.operationType,
                     timestamp: jobData.timestamp,
-                    translations: jobData.vendureData.translations
+                    translations: collection.translations
                 }, null, 2)}`
             );
 
@@ -109,11 +139,9 @@ export class CmsSyncService {
             // TODO: Replace with actual CMS API call
             // Example implementation:
             // const response = await this.cmsApiClient.post('/collections', {
-            //     vendureId: jobData.vendureData.id,
-            //     vendureTitle: jobData.vendureData.title,
-            //     vendureSlug: jobData.vendureData.slug,
+            //     id: collection.id,
             //     operation: jobData.operationType,
-            //     translations: jobData.vendureData.translations
+            //     translations: collection.translations
             // });
 
             return {

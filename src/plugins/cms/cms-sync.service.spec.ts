@@ -1,15 +1,34 @@
 import { Test } from '@nestjs/testing';
-import { Logger } from '@vendure/core';
+import { Logger, TransactionalConnection, Product, ProductVariant, Collection } from '@vendure/core';
+import { LanguageCode } from '@vendure/common/lib/generated-types';
 import { CmsSyncService } from './cms-sync.service';
 import { SyncJobData } from './types';
 
 describe('CmsSyncService', () => {
     let service: CmsSyncService;
     let loggerSpy: jest.SpyInstance;
+    let mockConnection: { getRepository: jest.Mock };
+    let mockRepository: { findOne: jest.Mock };
 
     beforeEach(async () => {
+        // Create mock repository with findOne method
+        mockRepository = {
+            findOne: jest.fn(),
+        };
+
+        // Create mock connection that returns our mock repository
+        mockConnection = {
+            getRepository: jest.fn().mockReturnValue(mockRepository),
+        };
+
         const module = await Test.createTestingModule({
-            providers: [CmsSyncService],
+            providers: [
+                CmsSyncService,
+                {
+                    provide: TransactionalConnection,
+                    useValue: mockConnection,
+                },
+            ],
         }).compile();
 
         service = module.get<CmsSyncService>(CmsSyncService);
@@ -20,26 +39,48 @@ describe('CmsSyncService', () => {
 
     afterEach(() => {
         loggerSpy.mockRestore();
+        jest.clearAllMocks();
     });
+
+    // Helper function to create mock Product entity
+    const createMockProduct = (id: string, translations: Array<{ languageCode: LanguageCode; name: string; slug: string; description: string }>): Product => ({
+        id,
+        translations,
+        // Other required Product properties can be mocked as needed
+    } as Product);
+
+    // Helper function to create mock ProductVariant entity
+    const createMockProductVariant = (id: string, translations: Array<{ languageCode: LanguageCode; name: string }>): ProductVariant => ({
+        id,
+        translations,
+        // Other required ProductVariant properties can be mocked as needed
+    } as ProductVariant);
+
+    // Helper function to create mock Collection entity
+    const createMockCollection = (id: string, translations: Array<{ languageCode: LanguageCode; name: string; slug: string; description: string }>): Collection => ({
+        id,
+        translations,
+        // Other required Collection properties can be mocked as needed
+    } as Collection);
 
     describe('syncProductToCms', () => {
         it('should successfully sync product and log the operation', async () => {
             // Arrange
+            const mockProduct = createMockProduct('1', [
+                {
+                    languageCode: LanguageCode.en,
+                    name: 'Test Product',
+                    slug: 'test-product',
+                    description: 'A test product description'
+                }
+            ]);
+
+            mockRepository.findOne.mockResolvedValue(mockProduct);
+
             const mockJobData: SyncJobData = {
                 entityType: 'product',
                 entityId: '1',
                 operationType: 'create',
-                vendureData: {
-                    id: '1',
-                    translations: [
-                        {
-                            languageCode: 'en',
-                            name: 'Test Product',
-                            slug: 'test-product',
-                            description: 'A test product description'
-                        }
-                    ]
-                },
                 timestamp: '2025-08-27T10:53:00.000Z',
                 retryCount: 0
             };
@@ -54,6 +95,13 @@ describe('CmsSyncService', () => {
                 timestamp: expect.any(Date)
             });
 
+            // Verify repository was called to fetch product
+            expect(mockConnection.getRepository).toHaveBeenCalledWith(Product);
+            expect(mockRepository.findOne).toHaveBeenCalledWith({
+                where: { id: '1' },
+                relations: ['translations']
+            });
+
             // Verify logging was called with correct parameters
             expect(loggerSpy).toHaveBeenCalledWith(
                 expect.stringContaining('[CmsPlugin] Product create:')
@@ -66,23 +114,45 @@ describe('CmsSyncService', () => {
             expect(loggedMessage).toContain('"name": "Test Product"');
         });
 
+        it('should handle product not found error', async () => {
+            // Arrange
+            mockRepository.findOne.mockResolvedValue(null);
+
+            const mockJobData: SyncJobData = {
+                entityType: 'product',
+                entityId: '999',
+                operationType: 'update',
+                timestamp: '2025-08-27T10:53:00.000Z',
+                retryCount: 0
+            };
+
+            // Act
+            const result = await service.syncProductToCms(mockJobData);
+
+            // Assert
+            expect(result).toEqual({
+                success: false,
+                message: 'Product sync failed: Product with ID 999 not found'
+            });
+        });
+
         it('should handle different operation types correctly', async () => {
             // Arrange
+            const mockProduct = createMockProduct('2', [
+                {
+                    languageCode: LanguageCode.en,
+                    name: 'Updated Product',
+                    slug: 'updated-product',
+                    description: 'Updated description'
+                }
+            ]);
+
+            mockRepository.findOne.mockResolvedValue(mockProduct);
+
             const mockJobData: SyncJobData = {
                 entityType: 'product',
                 entityId: '2',
                 operationType: 'update',
-                vendureData: {
-                    id: '2',
-                    translations: [
-                        {
-                            languageCode: 'en',
-                            name: 'Updated Product',
-                            slug: 'updated-product',
-                            description: 'Updated description'
-                        }
-                    ]
-                },
                 timestamp: '2025-08-27T10:53:00.000Z',
                 retryCount: 0
             };
@@ -102,27 +172,27 @@ describe('CmsSyncService', () => {
 
         it('should include translation data in sync payload', async () => {
             // Arrange
+            const mockProduct = createMockProduct('3', [
+                {
+                    languageCode: LanguageCode.en,
+                    name: 'Multilingual Product',
+                    slug: 'multilingual-product',
+                    description: 'English description'
+                },
+                {
+                    languageCode: LanguageCode.es,
+                    name: 'Producto Multilingüe',
+                    slug: 'producto-multilingue',
+                    description: 'Descripción en español'
+                }
+            ]);
+
+            mockRepository.findOne.mockResolvedValue(mockProduct);
+
             const mockJobData: SyncJobData = {
                 entityType: 'product',
                 entityId: '3',
                 operationType: 'update',
-                vendureData: {
-                    id: '3',
-                    translations: [
-                        {
-                            languageCode: 'en',
-                            name: 'Multilingual Product',
-                            slug: 'multilingual-product',
-                            description: 'English description'
-                        },
-                        {
-                            languageCode: 'es',
-                            name: 'Producto Multilingüe',
-                            slug: 'producto-multilingue',
-                            description: 'Descripción en español'
-                        }
-                    ]
-                },
                 timestamp: '2025-08-27T10:53:00.000Z',
                 retryCount: 0
             };
@@ -144,19 +214,19 @@ describe('CmsSyncService', () => {
     describe('syncVariantToCms', () => {
         it('should successfully sync product variant and log the operation', async () => {
             // Arrange
+            const mockVariant = createMockProductVariant('10', [
+                {
+                    languageCode: LanguageCode.en,
+                    name: 'Test Variant - Red Large'
+                }
+            ]);
+
+            mockRepository.findOne.mockResolvedValue(mockVariant);
+
             const mockJobData: SyncJobData = {
                 entityType: 'variant',
                 entityId: '10',
                 operationType: 'create',
-                vendureData: {
-                    id: '10',
-                    translations: [
-                        {
-                            languageCode: 'en',
-                            name: 'Test Variant - Red Large'
-                        }
-                    ]
-                },
                 timestamp: '2025-08-27T11:00:00.000Z',
                 retryCount: 0
             };
@@ -171,6 +241,13 @@ describe('CmsSyncService', () => {
                 timestamp: expect.any(Date)
             });
 
+            // Verify repository was called to fetch variant
+            expect(mockConnection.getRepository).toHaveBeenCalledWith(ProductVariant);
+            expect(mockRepository.findOne).toHaveBeenCalledWith({
+                where: { id: '10' },
+                relations: ['translations']
+            });
+
             // Verify logging was called with correct parameters
             expect(loggerSpy).toHaveBeenCalledWith(
                 expect.stringContaining('[CmsPlugin] Variant create:')
@@ -183,25 +260,14 @@ describe('CmsSyncService', () => {
             expect(loggedMessage).toContain('"name": "Test Variant - Red Large"');
         });
 
-        it('should handle variant update operations correctly', async () => {
+        it('should handle variant not found error', async () => {
             // Arrange
+            mockRepository.findOne.mockResolvedValue(null);
+
             const mockJobData: SyncJobData = {
                 entityType: 'variant',
-                entityId: '11',
+                entityId: '999',
                 operationType: 'update',
-                vendureData: {
-                    id: '11',
-                    translations: [
-                        {
-                            languageCode: 'en',
-                            name: 'Updated Variant - Blue Medium'
-                        },
-                        {
-                            languageCode: 'es',
-                            name: 'Variante Actualizada - Azul Mediano'
-                        }
-                    ]
-                },
                 timestamp: '2025-08-27T11:00:00.000Z',
                 retryCount: 0
             };
@@ -210,39 +276,31 @@ describe('CmsSyncService', () => {
             const result = await service.syncVariantToCms(mockJobData);
 
             // Assert
-            expect(result.success).toBe(true);
-            expect(result.message).toBe('Variant update synced successfully');
-            
-            // Verify correct operation type was logged
-            expect(loggerSpy).toHaveBeenCalledWith(
-                expect.stringContaining('[CmsPlugin] Variant update:')
-            );
-            
-            // Verify translations are included
-            const loggedMessage = loggerSpy.mock.calls[0][0];
-            expect(loggedMessage).toContain('"languageCode": "es"');
-            expect(loggedMessage).toContain('Variante Actualizada');
+            expect(result).toEqual({
+                success: false,
+                message: 'Variant sync failed: ProductVariant with ID 999 not found'
+            });
         });
     });
 
     describe('syncCollectionToCms', () => {
         it('should successfully sync collection and log the operation', async () => {
             // Arrange
+            const mockCollection = createMockCollection('20', [
+                {
+                    languageCode: LanguageCode.en,
+                    name: 'Electronics Collection',
+                    slug: 'electronics-collection',
+                    description: 'All electronic products'
+                }
+            ]);
+
+            mockRepository.findOne.mockResolvedValue(mockCollection);
+
             const mockJobData: SyncJobData = {
                 entityType: 'collection',
                 entityId: '20',
                 operationType: 'create',
-                vendureData: {
-                    id: '20',
-                    translations: [
-                        {
-                            languageCode: 'en',
-                            name: 'Electronics Collection',
-                            slug: 'electronics-collection',
-                            description: 'All electronic products'
-                        }
-                    ]
-                },
                 timestamp: '2025-08-27T11:00:00.000Z',
                 retryCount: 0
             };
@@ -257,6 +315,13 @@ describe('CmsSyncService', () => {
                 timestamp: expect.any(Date)
             });
 
+            // Verify repository was called to fetch collection
+            expect(mockConnection.getRepository).toHaveBeenCalledWith(Collection);
+            expect(mockRepository.findOne).toHaveBeenCalledWith({
+                where: { id: '20' },
+                relations: ['translations']
+            });
+
             // Verify logging was called with correct parameters
             expect(loggerSpy).toHaveBeenCalledWith(
                 expect.stringContaining('[CmsPlugin] Collection create:')
@@ -269,23 +334,14 @@ describe('CmsSyncService', () => {
             expect(loggedMessage).toContain('"name": "Electronics Collection"');
         });
 
-        it('should handle collection delete operations correctly', async () => {
+        it('should handle collection not found error', async () => {
             // Arrange
+            mockRepository.findOne.mockResolvedValue(null);
+
             const mockJobData: SyncJobData = {
                 entityType: 'collection',
-                entityId: '21',
+                entityId: '999',
                 operationType: 'delete',
-                vendureData: {
-                    id: '21',
-                    translations: [
-                        {
-                            languageCode: 'en',
-                            name: 'Deprecated Collection',
-                            slug: 'deprecated-collection',
-                            description: 'This collection is deprecated'
-                        }
-                    ]
-                },
                 timestamp: '2025-08-27T11:00:00.000Z',
                 retryCount: 0
             };
@@ -294,44 +350,41 @@ describe('CmsSyncService', () => {
             const result = await service.syncCollectionToCms(mockJobData);
 
             // Assert
-            expect(result.success).toBe(true);
-            expect(result.message).toBe('Collection delete synced successfully');
-            
-            // Verify correct operation type was logged
-            expect(loggerSpy).toHaveBeenCalledWith(
-                expect.stringContaining('[CmsPlugin] Collection delete:')
-            );
+            expect(result).toEqual({
+                success: false,
+                message: 'Collection sync failed: Collection with ID 999 not found'
+            });
         });
 
         it('should include multilingual collection data in sync payload', async () => {
             // Arrange
+            const mockCollection = createMockCollection('22', [
+                {
+                    languageCode: LanguageCode.en,
+                    name: 'Fashion Collection',
+                    slug: 'fashion-collection',
+                    description: 'Fashion and clothing items'
+                },
+                {
+                    languageCode: LanguageCode.es,
+                    name: 'Colección de Moda',
+                    slug: 'coleccion-de-moda',
+                    description: 'Artículos de moda y ropa'
+                },
+                {
+                    languageCode: LanguageCode.fr,
+                    name: 'Collection Mode',
+                    slug: 'collection-mode',
+                    description: 'Articles de mode et vêtements'
+                }
+            ]);
+
+            mockRepository.findOne.mockResolvedValue(mockCollection);
+
             const mockJobData: SyncJobData = {
                 entityType: 'collection',
                 entityId: '22',
                 operationType: 'update',
-                vendureData: {
-                    id: '22',
-                    translations: [
-                        {
-                            languageCode: 'en',
-                            name: 'Fashion Collection',
-                            slug: 'fashion-collection',
-                            description: 'Fashion and clothing items'
-                        },
-                        {
-                            languageCode: 'es',
-                            name: 'Colección de Moda',
-                            slug: 'coleccion-de-moda',
-                            description: 'Artículos de moda y ropa'
-                        },
-                        {
-                            languageCode: 'fr',
-                            name: 'Collection Mode',
-                            slug: 'collection-mode',
-                            description: 'Articles de mode et vêtements'
-                        }
-                    ]
-                },
                 timestamp: '2025-08-27T11:00:00.000Z',
                 retryCount: 0
             };

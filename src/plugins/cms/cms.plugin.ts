@@ -6,6 +6,7 @@ import {
   ProductEvent,
   ProductVariantEvent,
   CollectionEvent,
+  ProductVariant,
   Type,
   VendurePlugin,
   JobQueue,
@@ -88,13 +89,16 @@ export class CmsPlugin implements OnModuleInit {
     // Listen for ProductVariant events
     this.eventBus.ofType(ProductVariantEvent).subscribe(async (event) => {
       try {
-        const syncData = this.extractVariantSyncData(event);
+        const variantIds = event.entity.map(v => v.id).join(', ');
+        Logger.info(`[${loggerCtx}] ProductVariant event detected: ${event.type} for variants ${variantIds}`);
         
-        Logger.info(`[${loggerCtx}] ProductVariant event detected: ${event.type} for variants ${event.entity.map(v => v.id).join(', ')}`);
+        // Create a sync job for each variant
+        for (const variant of event.entity) {
+          const syncData = this.extractVariantSyncData(event, variant);
+          await this.variantSyncQueue.add(syncData);
+        }
         
-        await this.variantSyncQueue.add(syncData);
-        
-        Logger.info(`[${loggerCtx}] ProductVariant sync job queued for variants ${event.entity.map(v => v.id).join(', ')}`);
+        Logger.info(`[${loggerCtx}] ProductVariant sync jobs queued for variants ${variantIds}`);
       } catch (error) {
         Logger.error(`[${loggerCtx}] Failed to queue variant sync job: ${error instanceof Error ? error.message : 'Unknown error'}`, error instanceof Error ? error.stack : '');
       }
@@ -119,64 +123,30 @@ export class CmsPlugin implements OnModuleInit {
   }
 
   private extractSyncData(event: ProductEvent): SyncJobData {
-    const product = event.entity;
-    
     return {
       entityType: 'product',
-      entityId: product.id.toString(),
+      entityId: event.entity.id,
       operationType: this.mapEventTypeToOperation(event.type),
-      vendureData: {
-        id: product.id.toString(),
-        translations: product.translations?.map(t => ({
-          languageCode: t.languageCode,
-          name: t.name || '',
-          slug: t.slug || '',
-          description: t.description || ''
-        })) || []
-      },
       timestamp: new Date().toISOString(),
       retryCount: 0
     };
   }
 
-  private extractVariantSyncData(event: ProductVariantEvent): SyncJobData {
-    // ProductVariantEvent.entity is ProductVariant[] (array), so take the first one
-    const variants = event.entity;
-    const variant = variants[0];
-    
+  private extractVariantSyncData(event: ProductVariantEvent, variant: ProductVariant): SyncJobData {
     return {
       entityType: 'variant',
-      entityId: variant.id.toString(),
+      entityId: variant.id,
       operationType: this.mapEventTypeToOperation(event.type),
-      vendureData: {
-        id: variant.id.toString(),
-        translations: variant.translations?.map(t => ({
-          languageCode: t.languageCode,
-          name: t.name || ''
-          // Note: ProductVariant translations don't have slug or description
-        })) || []
-      },
       timestamp: new Date().toISOString(),
       retryCount: 0
     };
   }
 
   private extractCollectionSyncData(event: CollectionEvent): SyncJobData {
-    const collection = event.entity;
-    
     return {
       entityType: 'collection',
-      entityId: collection.id.toString(),
+      entityId: event.entity.id,
       operationType: this.mapEventTypeToOperation(event.type),
-      vendureData: {
-        id: collection.id.toString(),
-        translations: collection.translations?.map(t => ({
-          languageCode: t.languageCode,
-          name: t.name || '',
-          slug: t.slug || '',
-          description: t.description || ''
-        })) || []
-      },
       timestamp: new Date().toISOString(),
       retryCount: 0
     };

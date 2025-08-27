@@ -1,3 +1,5 @@
+import { ID } from '@vendure/common/lib/shared-types';
+
 /**
  * @description
  * The plugin can be configured using the following options:
@@ -13,21 +15,13 @@ export interface PluginInitOptions {
 
 /**
  * @description
- * Job data structure for CMS sync operations
+ * Job data structure for CMS sync operations.
+ * Uses entity ID references for efficient serialization and storage.
  */
 export interface SyncJobData {
     entityType: 'product' | 'variant' | 'collection';
-    entityId: string;
+    entityId: ID;
     operationType: 'create' | 'update' | 'delete';
-    vendureData: {
-        id: string;
-        translations: Array<{
-            languageCode: string;
-            name: string;
-            slug?: string; // Optional because ProductVariants don't have slugs
-            description?: string; // Available in Product and Collection translations
-        }>;
-    };
     timestamp: string;
     retryCount: number;
 }
