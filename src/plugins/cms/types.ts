@@ -1,5 +1,4 @@
 import { ID } from "@vendure/common/lib/shared-types";
-import { Collection, Product, ProductVariant } from "@vendure/core";
 
 /**
  * @description
@@ -8,6 +7,7 @@ import { Collection, Product, ProductVariant } from "@vendure/core";
 export interface PluginInitOptions {
   cmsApiUrl?: string;
   cmsApiKey?: string;
+  storyblokSpaceId?: string;
   retryAttempts?: number;
   retryDelay?: number;
   enableScheduledSync?: boolean;
@@ -20,7 +20,7 @@ export interface PluginInitOptions {
  * Uses entity ID references for efficient serialization and storage.
  */
 export interface SyncJobData {
-  entityType: Product | ProductVariant | Collection | string;
+  entityType: string;
   entityId: ID;
   operationType: "create" | "update" | "delete";
   timestamp: string;
