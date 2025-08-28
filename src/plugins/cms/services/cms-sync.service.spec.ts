@@ -8,7 +8,7 @@ import {
 } from "@vendure/core";
 import { LanguageCode } from "@vendure/common/lib/generated-types";
 import { CmsSyncService } from "./cms-sync.service";
-import { SyncJobData } from "./types";
+import { SyncJobData } from "../types";
 import { vi, MockedFunction } from "vitest";
 
 interface MockRepository {
@@ -43,7 +43,9 @@ describe("CmsSyncService", () => {
     };
 
     // Direct service instantiation with mock connection
-    service = new CmsSyncService(mockConnection as unknown as TransactionalConnection);
+    service = new CmsSyncService(
+      mockConnection as unknown as TransactionalConnection,
+    );
 
     // Spy on Logger.info method
     loggerSpy = vi.spyOn(Logger, "info").mockImplementation(() => {});
@@ -130,7 +132,9 @@ describe("CmsSyncService", () => {
       });
 
       // Verify repository was called to fetch product
-      expect(mockConnection.rawConnection.getRepository).toHaveBeenCalledWith(Product);
+      expect(mockConnection.rawConnection.getRepository).toHaveBeenCalledWith(
+        Product,
+      );
       expect(mockRepository.findOne).toHaveBeenCalledWith({
         where: { id: "1" },
         relations: { translations: true },
@@ -276,7 +280,9 @@ describe("CmsSyncService", () => {
       });
 
       // Verify repository was called to fetch variant
-      expect(mockConnection.rawConnection.getRepository).toHaveBeenCalledWith(ProductVariant);
+      expect(mockConnection.rawConnection.getRepository).toHaveBeenCalledWith(
+        ProductVariant,
+      );
       expect(mockRepository.findOne).toHaveBeenCalledWith({
         where: { id: "10" },
         relations: ["translations"],
@@ -350,7 +356,9 @@ describe("CmsSyncService", () => {
       });
 
       // Verify repository was called to fetch collection
-      expect(mockConnection.rawConnection.getRepository).toHaveBeenCalledWith(Collection);
+      expect(mockConnection.rawConnection.getRepository).toHaveBeenCalledWith(
+        Collection,
+      );
       expect(mockRepository.findOne).toHaveBeenCalledWith({
         where: { id: "20" },
         relations: ["translations"],

@@ -24,7 +24,7 @@ export interface PluginInitOptions {
 export interface SyncJobData {
   entityType: string;
   entityId: ID;
-  operationType: "create" | "update" | "delete";
+  operationType: OperationType;
   timestamp: string;
   retryCount: number;
 }
@@ -38,3 +38,5 @@ export interface SyncResponse {
   message: string;
   timestamp?: Date;
 }
+
+export type OperationType = "create" | "update" | "delete";

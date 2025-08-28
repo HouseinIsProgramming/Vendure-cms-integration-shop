@@ -6,7 +6,7 @@ import {
   Collection,
 } from "@vendure/core";
 import { CmsSyncService } from "./cms-sync.service";
-import { SyncJobData } from "./types";
+import { SyncJobData } from "../types";
 import { vi, MockedFunction } from "vitest";
 
 interface MockRepository {
@@ -40,7 +40,9 @@ describe("CmsSyncService Integration Tests", () => {
     };
 
     // Direct service instantiation with mock connection
-    service = new CmsSyncService(mockConnection as unknown as TransactionalConnection);
+    service = new CmsSyncService(
+      mockConnection as unknown as TransactionalConnection,
+    );
     loggerSpy = vi.spyOn(Logger, "info").mockImplementation(() => {});
   });
 

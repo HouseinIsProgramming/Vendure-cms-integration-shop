@@ -9,66 +9,23 @@ import {
   RequestContextService,
   LanguageCode,
 } from "@vendure/core";
-import { SyncJobData, SyncResponse, PluginInitOptions } from "./types";
-import { CMS_PLUGIN_OPTIONS, loggerCtx } from "./constants";
+import { SyncJobData, SyncResponse, PluginInitOptions } from "../types";
+import { CMS_PLUGIN_OPTIONS, loggerCtx } from "../constants";
+import { StoryblokService } from "./storyblok.service";
 
 @Injectable()
 export class CmsSyncService {
-  private readonly storyblokBaseUrl = "https://mapi.storyblok.com/v1";
-
   constructor(
-    private connection: TransactionalConnection,
     @Inject(CMS_PLUGIN_OPTIONS) private options: PluginInitOptions,
+    private readonly connection: TransactionalConnection,
     private readonly channelService: ChannelService,
     private readonly requestContextService: RequestContextService,
+    private readonly storyblockService: StoryblokService,
   ) {}
 
   private async getDefaultLanguageCode(): Promise<LanguageCode> {
     const defaultChannel = await this.channelService.getDefaultChannel();
     return defaultChannel.defaultLanguageCode;
-  }
-
-  private getStoryblokHeaders(): Record<string, string> {
-    if (!this.options.cmsApiKey) {
-      throw new Error("Storyblok API key is not configured");
-    }
-
-    return {
-      Authorization: this.options.cmsApiKey,
-      "Content-Type": "application/json",
-    };
-  }
-
-  private async makeStoryblokRequest(
-    method: "GET" | "POST" | "PUT" | "DELETE",
-    endpoint: string,
-    data?: any,
-  ): Promise<any> {
-    const url = `${this.storyblokBaseUrl}/spaces/${this.options.storyblokSpaceId}${endpoint}`;
-
-    const config: RequestInit = {
-      method,
-      headers: this.getStoryblokHeaders(),
-    };
-
-    if (data && (method === "POST" || method === "PUT")) {
-      config.body = JSON.stringify(data);
-    }
-
-    const response = await fetch(url, config);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `Storyblok API error: ${response.status} ${response.statusText} - ${errorText}`,
-      );
-    }
-
-    if (method === "DELETE") {
-      return {}; // DELETE requests typically don't return content
-    }
-
-    return await response.json();
   }
 
   async syncProductToCms(jobData: SyncJobData): Promise<SyncResponse> {
@@ -80,6 +37,8 @@ export class CmsSyncService {
           where: { id: jobData.entityId },
           relations: { translations: true },
         });
+
+      const operationType = jobData.operationType;
 
       const defaultLanguageCode = await this.getDefaultLanguageCode();
 
@@ -105,6 +64,12 @@ export class CmsSyncService {
           2,
         )}`,
       );
+
+      await this.storyblockService.syncProduct({
+        product,
+        defaultLanguageCode,
+        operationType,
+      });
 
       // Simulate API call delay
       await new Promise((resolve) => setTimeout(resolve, 100));
