@@ -18,7 +18,9 @@ interface MockRepository {
 }
 
 interface MockConnection {
-  getRepository: MockedFunction<(entity: any) => MockRepository>;
+  rawConnection: {
+    getRepository: MockedFunction<(entity: any) => MockRepository>;
+  };
 }
 
 describe("CmsSyncService", () => {
@@ -35,11 +37,13 @@ describe("CmsSyncService", () => {
 
     // Create mock connection that returns our mock repository
     mockConnection = {
-      getRepository: vi.fn().mockReturnValue(mockRepository),
+      rawConnection: {
+        getRepository: vi.fn().mockReturnValue(mockRepository),
+      },
     };
 
     // Direct service instantiation with mock connection
-    service = new CmsSyncService(mockConnection as TransactionalConnection);
+    service = new CmsSyncService(mockConnection as unknown as TransactionalConnection);
 
     // Spy on Logger.info method
     loggerSpy = vi.spyOn(Logger, "info").mockImplementation(() => {});
@@ -126,10 +130,10 @@ describe("CmsSyncService", () => {
       });
 
       // Verify repository was called to fetch product
-      expect(mockConnection.getRepository).toHaveBeenCalledWith(Product);
+      expect(mockConnection.rawConnection.getRepository).toHaveBeenCalledWith(Product);
       expect(mockRepository.findOne).toHaveBeenCalledWith({
         where: { id: "1" },
-        relations: ["translations"],
+        relations: { translations: true },
       });
 
       // Verify logging was called with correct parameters
@@ -272,7 +276,7 @@ describe("CmsSyncService", () => {
       });
 
       // Verify repository was called to fetch variant
-      expect(mockConnection.getRepository).toHaveBeenCalledWith(ProductVariant);
+      expect(mockConnection.rawConnection.getRepository).toHaveBeenCalledWith(ProductVariant);
       expect(mockRepository.findOne).toHaveBeenCalledWith({
         where: { id: "10" },
         relations: ["translations"],
@@ -346,7 +350,7 @@ describe("CmsSyncService", () => {
       });
 
       // Verify repository was called to fetch collection
-      expect(mockConnection.getRepository).toHaveBeenCalledWith(Collection);
+      expect(mockConnection.rawConnection.getRepository).toHaveBeenCalledWith(Collection);
       expect(mockRepository.findOne).toHaveBeenCalledWith({
         where: { id: "20" },
         relations: ["translations"],

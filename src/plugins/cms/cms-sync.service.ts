@@ -8,10 +8,19 @@ import {
 } from "@vendure/core";
 import { SyncJobData, SyncResponse } from "./types";
 import { loggerCtx } from "./constants";
+import Storyblok from "storyblok-js-client";
 
 @Injectable()
 export class CmsSyncService {
-  constructor(private connection: TransactionalConnection) {}
+  private storyblokClient: Storyblok;
+  private spaceId: string;
+
+  constructor(private connection: TransactionalConnection) {
+    this.storyblokClient = new Storyblok({
+      oauthToken: process.env.STORYBLOK_OAUTH_TOKEN,
+    });
+    this.spaceId = process.env.STORYBLOK_SPACE_ID || "";
+  }
 
   async syncProductToCms(jobData: SyncJobData): Promise<SyncResponse> {
     try {

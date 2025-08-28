@@ -16,7 +16,9 @@ interface MockRepository {
 }
 
 interface MockConnection {
-  getRepository: MockedFunction<(entity: any) => MockRepository>;
+  rawConnection: {
+    getRepository: MockedFunction<(entity: any) => MockRepository>;
+  };
 }
 
 describe("CmsSyncService Integration Tests", () => {
@@ -32,11 +34,13 @@ describe("CmsSyncService Integration Tests", () => {
     };
 
     mockConnection = {
-      getRepository: vi.fn().mockReturnValue(mockRepository),
+      rawConnection: {
+        getRepository: vi.fn().mockReturnValue(mockRepository),
+      },
     };
 
     // Direct service instantiation with mock connection
-    service = new CmsSyncService(mockConnection as TransactionalConnection);
+    service = new CmsSyncService(mockConnection as unknown as TransactionalConnection);
     loggerSpy = vi.spyOn(Logger, "info").mockImplementation(() => {});
   });
 
@@ -80,7 +84,7 @@ describe("CmsSyncService Integration Tests", () => {
     };
 
     // Mock the database response to return our realistic data
-    mockRepository.findOne.mockResolvedValue(realisticProduct);
+    mockRepository.findOne.mockResolvedValue(realisticProduct as any);
 
     const jobData: SyncJobData = {
       entityType: Product.name,
@@ -98,12 +102,12 @@ describe("CmsSyncService Integration Tests", () => {
     expect(result.message).toBe("Product update synced successfully");
 
     // Verify the service fetched data with proper query structure
-    expect(mockConnection.getRepository).toHaveBeenCalledWith(
-      expect.anything(),
-    ); // Product entity
+    expect(mockConnection.rawConnection.getRepository).toHaveBeenCalledWith(
+      Product,
+    );
     expect(mockRepository.findOne).toHaveBeenCalledWith({
       where: { id: "1" },
-      relations: ["translations"],
+      relations: { translations: true },
     });
 
     // Verify realistic multilingual data was logged
@@ -144,7 +148,7 @@ describe("CmsSyncService Integration Tests", () => {
       position: 1,
     };
 
-    mockRepository.findOne.mockResolvedValue(realisticCollection);
+    mockRepository.findOne.mockResolvedValue(realisticCollection as any);
 
     const jobData: SyncJobData = {
       entityType: Collection.name,
@@ -189,7 +193,7 @@ describe("CmsSyncService Integration Tests", () => {
       enabled: true,
     };
 
-    mockRepository.findOne.mockResolvedValue(realisticVariant);
+    mockRepository.findOne.mockResolvedValue(realisticVariant as any);
 
     const jobData: SyncJobData = {
       entityType: ProductVariant.name,
@@ -238,7 +242,7 @@ describe("CmsSyncService Integration Tests", () => {
     // Verify correct database query pattern
     expect(mockRepository.findOne).toHaveBeenCalledWith({
       where: { id: "123" },
-      relations: ["translations"],
+      relations: { translations: true },
     });
   });
 });
