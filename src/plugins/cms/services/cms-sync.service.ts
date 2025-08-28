@@ -30,8 +30,9 @@ export class CmsSyncService implements OnApplicationBootstrap {
 
   async onApplicationBootstrap() {
     if (this.processContext.isWorker) {
+      // TODO: comment to disable auto-sync on startup (not recommended for production)
       this.syncAllProductsToCms();
-      Logger.info("Synced All Products");
+      Logger.info("CMS Sync Service initialized");
     }
   }
   ensureContentTypesExists() {
@@ -44,7 +45,7 @@ export class CmsSyncService implements OnApplicationBootstrap {
   }
 
   /**
-   * Syncs all products in the database to the CMS
+   * Syncs all products in the database to the CMS with rate limiting and retry logic
    * @returns Summary of sync results
    */
   async syncAllProductsToCms(): Promise<{
@@ -52,15 +53,25 @@ export class CmsSyncService implements OnApplicationBootstrap {
     totalProducts: number;
     successCount: number;
     errorCount: number;
-    errors: Array<{ productId: number | string; error: string }>;
+    errors: Array<{
+      productId: number | string;
+      error: string;
+      attempts: number;
+    }>;
   }> {
     const startTime = Date.now();
     let successCount = 0;
     let errorCount = 0;
-    const errors: Array<{ productId: number | string; error: string }> = [];
+    const finalErrors: Array<{
+      productId: number | string;
+      error: string;
+      attempts: number;
+    }> = [];
 
     try {
-      Logger.info(`[${loggerCtx}] Starting sync of all products to CMS`);
+      Logger.info(
+        `[${loggerCtx}] Starting sync of all products to CMS with rate limiting`,
+      );
 
       // Fetch all products with translations
       const products = await this.connection.rawConnection
@@ -85,46 +96,94 @@ export class CmsSyncService implements OnApplicationBootstrap {
 
       const defaultLanguageCode = await this.getDefaultLanguageCode();
 
-      // Process products in batches to avoid overwhelming the API
-      const batchSize = 3;
-      for (let i = 0; i < products.length; i += batchSize) {
-        const batch = products.slice(i, i + batchSize);
+      // Create a job queue with retry logic
+      interface ProductJob {
+        product: Product;
+        attempts: number;
+        maxAttempts: number;
+        lastError?: string;
+      }
+
+      // Initialize job queue
+      const jobQueue: ProductJob[] = products.map((product) => ({
+        product,
+        attempts: 0,
+        maxAttempts: 10, // Maximum 5 attempts per product
+        lastError: undefined,
+      }));
+
+      let processedCount = 0;
+      const rateLimitDelay = 1000 / 5; // 6 calls per second (StoryBlock rate limiting)
+
+      // Process jobs with rate limiting and retries
+      while (jobQueue.length > 0) {
+        const currentJob = jobQueue.shift()!;
+        currentJob.attempts++;
 
         Logger.info(
-          `[${loggerCtx}] Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(products.length / batchSize)} (products ${i + 1}-${Math.min(i + batchSize, products.length)})`,
+          `[${loggerCtx}] Processing product ${currentJob.product.id} (attempt ${currentJob.attempts}/${currentJob.maxAttempts}) - ${processedCount + 1}/${totalProducts} total`,
         );
 
-        // Process batch concurrently but with controlled concurrency
-        const batchPromises = batch.map(async (product) => {
-          try {
-            await this.storyblockService.syncProduct({
-              product,
-              defaultLanguageCode,
-              operationType: "update", // Use update which will create if not exists
-            });
-            successCount++;
-            Logger.debug(
-              `[${loggerCtx}] Successfully synced product ${product.id}`,
+        try {
+          // Rate limiting: Wait before making the API call
+          await new Promise((resolve) => setTimeout(resolve, rateLimitDelay));
+
+          await this.storyblockService.syncProduct({
+            product: currentJob.product,
+            defaultLanguageCode,
+            operationType: "update", // Use update which will create if not exists
+          });
+
+          successCount++;
+          processedCount++;
+          Logger.debug(
+            `[${loggerCtx}] Successfully synced product ${currentJob.product.id} after ${currentJob.attempts} attempts`,
+          );
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : "Unknown error";
+          currentJob.lastError = errorMessage;
+
+          Logger.warn(
+            `[${loggerCtx}] Attempt ${currentJob.attempts} failed for product ${currentJob.product.id}: ${errorMessage}`,
+          );
+
+          // Check if we should retry
+          if (currentJob.attempts < currentJob.maxAttempts) {
+            // Calculate exponential backoff delay (additional delay on top of rate limiting)
+            const backoffDelay = Math.min(
+              1000 * Math.pow(2, currentJob.attempts - 1),
+              10000,
+            ); // Max 10s backoff
+
+            Logger.info(
+              `[${loggerCtx}] Requeuing product ${currentJob.product.id} for retry in ${backoffDelay}ms (attempt ${currentJob.attempts + 1}/${currentJob.maxAttempts})`,
             );
-          } catch (error) {
+
+            // Add back to queue for retry with exponential backoff
+            setTimeout(() => {
+              jobQueue.push(currentJob);
+            }, backoffDelay);
+          } else {
+            // Max attempts reached
             errorCount++;
-            const errorMessage =
-              error instanceof Error ? error.message : "Unknown error";
-            errors.push({
-              productId: product.id,
-              error: errorMessage,
+            processedCount++;
+            finalErrors.push({
+              productId: currentJob.product.id,
+              error: `Failed after ${currentJob.maxAttempts} attempts. Last error: ${errorMessage}`,
+              attempts: currentJob.attempts,
             });
             Logger.error(
-              `[${loggerCtx}] Failed to sync product ${product.id}: ${errorMessage}`,
+              `[${loggerCtx}] Product ${currentJob.product.id} failed permanently after ${currentJob.maxAttempts} attempts`,
             );
           }
-        });
+        }
 
-        await Promise.all(batchPromises);
-
-        // Small delay between batches to be nice to the API
-        if (i + batchSize < products.length) {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+        // Progress logging every 10 processed items
+        if (processedCount % 10 === 0) {
+          Logger.info(
+            `[${loggerCtx}] Progress: ${processedCount}/${totalProducts} processed, ${successCount} successful, ${errorCount} failed, ${jobQueue.length} in queue`,
+          );
         }
       }
 
@@ -134,19 +193,22 @@ export class CmsSyncService implements OnApplicationBootstrap {
         totalProducts,
         successCount,
         errorCount,
-        errors,
+        errors: finalErrors,
       };
 
       Logger.info(
-        `[${loggerCtx}] Bulk sync completed in ${duration}ms: ${successCount}/${totalProducts} successful, ${errorCount} failed`,
+        `[${loggerCtx}] Bulk sync completed in ${duration}ms: ${successCount}/${totalProducts} successful, ${errorCount} permanently failed`,
       );
 
       if (errorCount > 0) {
         Logger.warn(
-          `[${loggerCtx}] ${errorCount} products failed to sync. First few errors:`,
-          errors
-            .slice(0, 5)
-            .map((e) => `Product ${e.productId}: ${e.error}`)
+          `[${loggerCtx}] ${errorCount} products failed permanently after retries:`,
+          finalErrors
+            .slice(0, 3)
+            .map(
+              (e) =>
+                `Product ${e.productId} (${e.attempts} attempts): ${e.error}`,
+            )
             .join(", "),
         );
       }
@@ -162,7 +224,10 @@ export class CmsSyncService implements OnApplicationBootstrap {
         totalProducts: 0,
         successCount,
         errorCount: errorCount + 1,
-        errors: [...errors, { productId: -1, error: errorMessage }],
+        errors: [
+          ...finalErrors,
+          { productId: -1, error: errorMessage, attempts: 1 },
+        ],
       };
     }
   }
