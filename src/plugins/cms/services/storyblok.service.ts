@@ -29,7 +29,7 @@ export class StoryblokService implements OnApplicationBootstrap {
   ) {}
 
   async onApplicationBootstrap() {
-    if (this.processContext.isServer) {
+    if (this.processContext.isWorker) {
       const toLog = await this.ensureContentTypesExists();
       console.log(toLog);
     }
@@ -46,8 +46,19 @@ export class StoryblokService implements OnApplicationBootstrap {
   }) {
     switch (operationType) {
       case "create":
-      // this.makeStoryblokRequest("POST", "stories", --)
+        const result = await this.makeStoryblokRequest({
+          method: "POST",
+          endpoint: "stories",
+          data: this.transformProductData(product, defaultLanguageCode),
+        });
+        console.log(result);
       case "update":
+      case "create":
+        this.makeStoryblokRequest({
+          method: "POST",
+          endpoint: "stories",
+          data: this.transformProductData(product, defaultLanguageCode),
+        });
       case "delete":
     }
   }
@@ -86,9 +97,6 @@ export class StoryblokService implements OnApplicationBootstrap {
     const defaultTranslation = product.translations.find(
       (t) => t.languageCode === defaultLanguageCode,
     );
-    const otherTranslations = product.translations.filter(
-      (t) => t.languageCode !== defaultLanguageCode,
-    );
 
     if (!defaultTranslation) {
       return undefined;
@@ -106,20 +114,16 @@ export class StoryblokService implements OnApplicationBootstrap {
       publish: 1,
     };
 
-    // if (otherTranslations.length > 1) {
-    //   for (translation in otherTranslations){
-    //     result.story.
-    //   }
-    // }
     return result;
   }
 
   private async checkContentTypes() {
     //  curl -H "Authorization: QtQtXHU2tFjkk7P1peAblAtt-70271483895739-r3UgJzCHEfz3C9hxJVWD" 'https://mapi.storyblok.com/v1/spaces/286724947198305/components?search=Vendure' | jq
-    const response = await this.makeStoryblokRequest(
-      "GET",
-      `${this.componentsPath}?search=vendure`,
-    );
+    const response = await this.makeStoryblokRequest({
+      method: "GET",
+      endpoint: `${this.componentsPath}?search=vendure`,
+      skipInitializationCheck: true,
+    });
 
     const checkIfExists = (name: string) => {
       return response.components.findIndex((c: any) => c.name === name) !== -1;
@@ -163,11 +167,12 @@ export class StoryblokService implements OnApplicationBootstrap {
       const data = shapeData(contentType);
 
       Logger.info(`Creating content type ${data.component.name}`);
-      const response = await this.makeStoryblokRequest(
-        "POST",
-        this.componentsPath,
-        data,
-      );
+      const response = await this.makeStoryblokRequest({
+        method: "POST",
+        endpoint: this.componentsPath,
+        data: data,
+        skipInitializationCheck: true,
+      });
 
       if (response.component.id) {
         Logger.info(
@@ -187,26 +192,8 @@ export class StoryblokService implements OnApplicationBootstrap {
     if (!contentCheck.collection) {
       await createContentType("collection");
     }
-
+    Logger.info("initialized");
     this.isInitialized = true;
-  }
-
-  private getContentType() {
-    // {
-    // "name": "vendure-product",
-    // "display_name": "Vendure Product",
-    // "description": "product content type",
-    // "created_at": "2025-08-28T07:55:20.183Z",
-    // "updated_at": "2025-08-28T13:48:24.659Z",
-    // "id": 84697580274737,
-    // "schema": {
-    //   "vendureId": {
-    //     "type": "text",
-    //     "pos": 0,
-    //     "required": true,
-    //     "id": "Wak4AX95TL-jRUzjNXEtSA"
-    //   }
-    // },
   }
 
   private getStoryblokHeaders(): Record<string, string> {
@@ -219,13 +206,18 @@ export class StoryblokService implements OnApplicationBootstrap {
       "Content-Type": "application/json",
     };
   }
-  private async makeStoryblokRequest(
-    method: "GET" | "POST" | "PUT" | "DELETE",
-    endpoint: string,
-    data?: any,
-  ): Promise<any> {
+  private async makeStoryblokRequest({
+    method,
+    endpoint,
+    data,
+    skipInitializationCheck = false,
+  }: {
+    method: "GET" | "POST" | "PUT" | "DELETE";
+    endpoint: string;
+    data?: any;
+    skipInitializationCheck?: boolean;
+  }): Promise<any> {
     const url = `${this.storyblokBaseUrl}/spaces/${this.options.storyblokSpaceId}${endpoint}`;
-
     const config: RequestInit = {
       method,
       headers: this.getStoryblokHeaders(),
@@ -235,20 +227,25 @@ export class StoryblokService implements OnApplicationBootstrap {
       config.body = JSON.stringify(data);
     }
 
-    let attempts = 0;
-    const maxAttempts = 100;
-    while (!this.isInitialized && attempts < maxAttempts) {
-      await new Promise((res) =>
-        setTimeout(res, Math.min(10, Math.min(1.05 ** (attempts + 1), 30000))),
-      );
-      attempts++;
-      if (attempts === maxAttempts - 1) {
-        Logger.error(
-          "Reached max attempts while waitin for Storyblok content types initialization",
+    // In the case the content types have not yet been initialized this code will wait until it is
+    // and includes an exponential back off strategy
+    if (!skipInitializationCheck) {
+      let attempts = 0;
+      const maxAttempts = 100;
+      while (!this.isInitialized && attempts < maxAttempts) {
+        await new Promise((res) =>
+          setTimeout(res, Math.min(10, Math.min(1.1 ** (attempts + 1), 30000))),
         );
+        attempts++;
+        if (attempts === maxAttempts - 1) {
+          Logger.error(
+            "Reached max attempts while waitin for Storyblok content types initialization",
+          );
+        }
       }
     }
 
+    console.log("\n request made: " + url + "\n and the config: \n");
     const response = await fetch(url, config);
 
     if (!response.ok) {
