@@ -1,9 +1,7 @@
 import { Inject, Injectable, OnApplicationBootstrap } from "@nestjs/common";
 import {
-  ID,
   LanguageCode,
   Product,
-  RequestContext,
   TransactionalConnection,
   ProcessContext,
   Logger,
@@ -19,7 +17,7 @@ const COMPONENT_TYPE = {
 @Injectable()
 export class StoryblokService implements OnApplicationBootstrap {
   private readonly storyblokBaseUrl = "https://mapi.storyblok.com/v1";
-  private readonly componentsPath = "/components/";
+  private readonly componentsPath = "components";
   private isInitialized = false;
 
   constructor(
@@ -52,14 +50,20 @@ export class StoryblokService implements OnApplicationBootstrap {
           data: this.transformProductData(product, defaultLanguageCode),
         });
         console.log(result);
+        break;
       case "update":
-      case "create":
-        this.makeStoryblokRequest({
-          method: "POST",
-          endpoint: "stories",
+        await this.makeStoryblokRequest({
+          method: "PUT",
+          endpoint: `stories/${product.id}`,
           data: this.transformProductData(product, defaultLanguageCode),
         });
+        break;
       case "delete":
+        await this.makeStoryblokRequest({
+          method: "DELETE",
+          endpoint: `stories/${product.id}`,
+        });
+        break;
     }
   }
 
@@ -185,7 +189,7 @@ export class StoryblokService implements OnApplicationBootstrap {
       await createContentType("product");
     }
 
-    if (!contentCheck.collection) {
+    if (!contentCheck.variant) {
       await createContentType("product_variant");
     }
 
@@ -198,11 +202,11 @@ export class StoryblokService implements OnApplicationBootstrap {
 
   private getStoryblokHeaders(): Record<string, string> {
     if (!this.options.cmsApiKey) {
-      throw new Error("Storyblok API key is not configured");
+      Logger.error("Storyblok API key is not configured");
     }
 
     return {
-      Authorization: this.options.cmsApiKey,
+      Authorization: this.options.cmsApiKey as string,
       "Content-Type": "application/json",
     };
   }
@@ -217,7 +221,7 @@ export class StoryblokService implements OnApplicationBootstrap {
     data?: any;
     skipInitializationCheck?: boolean;
   }): Promise<any> {
-    const url = `${this.storyblokBaseUrl}/spaces/${this.options.storyblokSpaceId}${endpoint}`;
+    const url = `${this.storyblokBaseUrl}/spaces/${this.options.storyblokSpaceId}/${endpoint}`;
     const config: RequestInit = {
       method,
       headers: this.getStoryblokHeaders(),
@@ -245,11 +249,16 @@ export class StoryblokService implements OnApplicationBootstrap {
       }
     }
 
-    console.log("\n request made: " + url + "\n and the config: \n");
+    console.log(
+      "\n request made: " + url + "\n and the config: " + config.body,
+    );
     const response = await fetch(url, config);
 
     if (!response.ok) {
       const errorText = await response.text();
+      Logger.error(
+        `Storyblok API error: ${response.status} ${response.statusText} - ${errorText}`,
+      );
       Logger.error(
         `Storyblok API error: ${response.status} ${response.statusText} - ${errorText}`,
       );
