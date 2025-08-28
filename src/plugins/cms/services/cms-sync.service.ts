@@ -21,6 +21,13 @@ import { StoryblokService } from "./storyblok.service";
 export class CmsSyncService implements OnApplicationBootstrap {
   private readonly translationUtils = new TranslationUtils();
 
+  // Entity type constants - following the pattern from StoryblokService
+  private readonly ENTITY_TYPES = {
+    product: "Product",
+    product_variant: "ProductVariant",
+    collection: "Collection",
+  } as const;
+
   constructor(
     @Inject(CMS_PLUGIN_OPTIONS) private options: PluginInitOptions,
     private readonly connection: TransactionalConnection,
@@ -33,7 +40,11 @@ export class CmsSyncService implements OnApplicationBootstrap {
   async onApplicationBootstrap() {
     if (this.processContext.isWorker) {
       // TODO: Uncomment to enable auto-sync on startup (not recommended for production)
-      // this.syncAllProductsToCms();
+      await this.syncAllEntitiesToCmsGeneric(
+        "Product",
+        Product,
+        this.syncProductToCms.bind(this),
+      );
       Logger.info("CMS Sync Service initialized");
     }
   }
@@ -46,10 +57,185 @@ export class CmsSyncService implements OnApplicationBootstrap {
     return defaultChannel.defaultLanguageCode;
   }
 
-  /**
-   * Syncs all products in the database to the CMS with rate limiting and retry logic
-   * @returns Summary of sync results
-   */
+  private async syncAllEntitiesToCmsGeneric<T extends { id: any }>(
+    entityType: "Product" | "ProductVariant" | "Collection",
+    repository: any,
+    syncMethod: (jobData: SyncJobData) => Promise<SyncResponse>,
+  ): Promise<{
+    success: boolean;
+    totalEntities: number;
+    successCount: number;
+    errorCount: number;
+    errors: Array<{
+      entityId: number | string;
+      error: string;
+      attempts: number;
+    }>;
+  }> {
+    const startTime = Date.now();
+    let successCount = 0;
+    let errorCount = 0;
+    const finalErrors: Array<{
+      entityId: number | string;
+      error: string;
+      attempts: number;
+    }> = [];
+
+    try {
+      Logger.info(
+        `[${loggerCtx}] Starting sync of all ${entityType.toLowerCase()}s to CMS with rate limiting`,
+      );
+
+      // Fetch all entities with translations
+      const entities = await this.connection.rawConnection
+        .getRepository(repository)
+        .find({
+          relations: ["translations"],
+          order: { id: "ASC" },
+        });
+
+      const totalEntities = entities.length;
+      Logger.info(
+        `[${loggerCtx}] Found ${totalEntities} ${entityType.toLowerCase()}s to sync`,
+      );
+
+      if (totalEntities === 0) {
+        return {
+          success: true,
+          totalEntities: 0,
+          successCount: 0,
+          errorCount: 0,
+          errors: [],
+        };
+      }
+
+      // Create a job queue with retry logic
+      interface EntityJob {
+        entity: T;
+        attempts: number;
+        maxAttempts: number;
+        lastError?: string;
+      }
+
+      // Initialize job queue
+      const jobQueue: EntityJob[] = entities.map((entity) => ({
+        entity: entity as T,
+        attempts: 0,
+        maxAttempts: 10,
+        lastError: undefined,
+      }));
+
+      let processedCount = 0;
+      const rateLimitDelay = 1000 / 5; // 5 calls per second
+
+      // Process jobs with rate limiting and retries
+      while (jobQueue.length > 0) {
+        const currentJob = jobQueue.shift()!;
+        currentJob.attempts++;
+
+        Logger.info(
+          `[${loggerCtx}] Processing ${entityType.toLowerCase()} ${currentJob.entity.id} (attempt ${currentJob.attempts}/${currentJob.maxAttempts}) - ${processedCount + 1}/${totalEntities} total`,
+        );
+
+        try {
+          // Rate limiting: Wait before making the API call
+          await new Promise((resolve) => setTimeout(resolve, rateLimitDelay));
+
+          await syncMethod({
+            entityType,
+            entityId: currentJob.entity.id,
+            operationType: "update",
+            timestamp: new Date().toISOString(),
+            retryCount: 0,
+          });
+
+          successCount++;
+          processedCount++;
+          Logger.debug(
+            `[${loggerCtx}] Successfully synced ${entityType.toLowerCase()} ${currentJob.entity.id} after ${currentJob.attempts} attempts`,
+          );
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : "Unknown error";
+          const errorStack = error instanceof Error ? error.stack : "";
+          currentJob.lastError = errorMessage;
+
+          Logger.error(
+            `[${loggerCtx}] Attempt ${currentJob.attempts} failed for ${entityType.toLowerCase()} ${currentJob.entity.id}: ${errorMessage}`,
+            errorStack,
+          );
+
+          // Check if we should retry
+          if (currentJob.attempts < currentJob.maxAttempts) {
+            const backoffDelay = Math.min(
+              1000 * Math.pow(2, currentJob.attempts - 1),
+              10000,
+            );
+
+            Logger.info(
+              `[${loggerCtx}] Requeuing ${entityType.toLowerCase()} ${currentJob.entity.id} for retry in ${backoffDelay}ms (attempt ${currentJob.attempts + 1}/${currentJob.maxAttempts})`,
+            );
+
+            setTimeout(() => {
+              jobQueue.push(currentJob);
+            }, backoffDelay);
+          } else {
+            // Max attempts reached
+            errorCount++;
+            processedCount++;
+            finalErrors.push({
+              entityId: currentJob.entity.id,
+              error: `Failed after ${currentJob.maxAttempts} attempts. Last error: ${errorMessage}`,
+              attempts: currentJob.attempts,
+            });
+            Logger.error(
+              `[${loggerCtx}] ${entityType} ${currentJob.entity.id} failed permanently after ${currentJob.maxAttempts} attempts`,
+            );
+          }
+        }
+
+        // Progress logging every 10 processed items
+        if (processedCount % 10 === 0) {
+          Logger.info(
+            `[${loggerCtx}] Progress: ${processedCount}/${totalEntities} processed, ${successCount} successful, ${errorCount} failed, ${jobQueue.length} in queue`,
+          );
+        }
+      }
+
+      const duration = Date.now() - startTime;
+      const result = {
+        success: errorCount === 0,
+        totalEntities,
+        successCount,
+        errorCount,
+        errors: finalErrors,
+      };
+
+      Logger.info(
+        `[${loggerCtx}] Bulk ${entityType.toLowerCase()} sync completed in ${duration}ms: ${successCount}/${totalEntities} successful, ${errorCount} permanently failed`,
+      );
+
+      return result;
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      Logger.error(
+        `[${loggerCtx}] Bulk ${entityType.toLowerCase()} sync failed: ${errorMessage}`,
+      );
+
+      return {
+        success: false,
+        totalEntities: 0,
+        successCount,
+        errorCount: errorCount + 1,
+        errors: [
+          ...finalErrors,
+          { entityId: -1, error: errorMessage, attempts: 1 },
+        ],
+      };
+    }
+  }
+
   async syncAllProductsToCms(): Promise<{
     success: boolean;
     totalProducts: number;
@@ -61,177 +247,91 @@ export class CmsSyncService implements OnApplicationBootstrap {
       attempts: number;
     }>;
   }> {
-    const startTime = Date.now();
-    let successCount = 0;
-    let errorCount = 0;
-    const finalErrors: Array<{
-      productId: number | string;
+    const result = await this.syncAllEntitiesToCmsGeneric(
+      "Product",
+      Product,
+      this.syncProductToCms.bind(this),
+    );
+
+    return {
+      success: result.success,
+      totalProducts: result.totalEntities,
+      successCount: result.successCount,
+      errorCount: result.errorCount,
+      errors: result.errors.map((e) => ({
+        productId: e.entityId,
+        error: e.error,
+        attempts: e.attempts,
+      })),
+    };
+  }
+
+  /**
+   * Syncs all product variants in the database to the CMS with rate limiting and retry logic
+   * @returns Summary of sync results
+   */
+  async syncAllProductVariantsToCms(): Promise<{
+    success: boolean;
+    totalProductVariants: number;
+    successCount: number;
+    errorCount: number;
+    errors: Array<{
+      productVariantId: number | string;
       error: string;
       attempts: number;
-    }> = [];
+    }>;
+  }> {
+    const result = await this.syncAllEntitiesToCmsGeneric(
+      "ProductVariant",
+      ProductVariant,
+      this.syncVariantToCms.bind(this),
+    );
 
-    try {
-      Logger.info(
-        `[${loggerCtx}] Starting sync of all products to CMS with rate limiting`,
-      );
+    return {
+      success: result.success,
+      totalProductVariants: result.totalEntities,
+      successCount: result.successCount,
+      errorCount: result.errorCount,
+      errors: result.errors.map((e) => ({
+        productVariantId: e.entityId,
+        error: e.error,
+        attempts: e.attempts,
+      })),
+    };
+  }
 
-      // Fetch all products with translations
-      const products = await this.connection.rawConnection
-        .getRepository(Product)
-        .find({
-          relations: { translations: true },
-          order: { id: "ASC" },
-        });
+  /**
+   * Syncs all collections in the database to the CMS with rate limiting and retry logic
+   * @returns Summary of sync results
+   */
+  async syncAllCollectionsToCms(): Promise<{
+    success: boolean;
+    totalCollections: number;
+    successCount: number;
+    errorCount: number;
+    errors: Array<{
+      collectionId: number | string;
+      error: string;
+      attempts: number;
+    }>;
+  }> {
+    const result = await this.syncAllEntitiesToCmsGeneric(
+      "Collection",
+      Collection,
+      this.syncCollectionToCms.bind(this),
+    );
 
-      const totalProducts = products.length;
-      Logger.info(`[${loggerCtx}] Found ${totalProducts} products to sync`);
-
-      if (totalProducts === 0) {
-        return {
-          success: true,
-          totalProducts: 0,
-          successCount: 0,
-          errorCount: 0,
-          errors: [],
-        };
-      }
-
-      const defaultLanguageCode = await this.getDefaultLanguageCode();
-
-      // Create a job queue with retry logic
-      interface ProductJob {
-        product: Product;
-        attempts: number;
-        maxAttempts: number;
-        lastError?: string;
-      }
-
-      // Initialize job queue
-      const jobQueue: ProductJob[] = products.map((product) => ({
-        product,
-        attempts: 0,
-        maxAttempts: 10, // Maximum 5 attempts per product
-        lastError: undefined,
-      }));
-
-      let processedCount = 0;
-      const rateLimitDelay = 1000 / 5; // 6 calls per second (StoryBlock rate limiting)
-
-      // Process jobs with rate limiting and retries
-      while (jobQueue.length > 0) {
-        const currentJob = jobQueue.shift()!;
-        currentJob.attempts++;
-
-        Logger.info(
-          `[${loggerCtx}] Processing product ${currentJob.product.id} (attempt ${currentJob.attempts}/${currentJob.maxAttempts}) - ${processedCount + 1}/${totalProducts} total`,
-        );
-
-        try {
-          // Rate limiting: Wait before making the API call
-          await new Promise((resolve) => setTimeout(resolve, rateLimitDelay));
-
-          await this.storyblockService.syncProduct({
-            product: currentJob.product,
-            defaultLanguageCode,
-            operationType: "update", // Use update which will create if not exists
-          });
-
-          successCount++;
-          processedCount++;
-          Logger.debug(
-            `[${loggerCtx}] Successfully synced product ${currentJob.product.id} after ${currentJob.attempts} attempts`,
-          );
-        } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : "Unknown error";
-          currentJob.lastError = errorMessage;
-
-          Logger.warn(
-            `[${loggerCtx}] Attempt ${currentJob.attempts} failed for product ${currentJob.product.id}: ${errorMessage}`,
-          );
-
-          // Check if we should retry
-          if (currentJob.attempts < currentJob.maxAttempts) {
-            // Calculate exponential backoff delay (additional delay on top of rate limiting)
-            const backoffDelay = Math.min(
-              1000 * Math.pow(2, currentJob.attempts - 1),
-              10000,
-            ); // Max 10s backoff
-
-            Logger.info(
-              `[${loggerCtx}] Requeuing product ${currentJob.product.id} for retry in ${backoffDelay}ms (attempt ${currentJob.attempts + 1}/${currentJob.maxAttempts})`,
-            );
-
-            // Add back to queue for retry with exponential backoff
-            setTimeout(() => {
-              jobQueue.push(currentJob);
-            }, backoffDelay);
-          } else {
-            // Max attempts reached
-            errorCount++;
-            processedCount++;
-            finalErrors.push({
-              productId: currentJob.product.id,
-              error: `Failed after ${currentJob.maxAttempts} attempts. Last error: ${errorMessage}`,
-              attempts: currentJob.attempts,
-            });
-            Logger.error(
-              `[${loggerCtx}] Product ${currentJob.product.id} failed permanently after ${currentJob.maxAttempts} attempts`,
-            );
-          }
-        }
-
-        // Progress logging every 10 processed items
-        if (processedCount % 10 === 0) {
-          Logger.info(
-            `[${loggerCtx}] Progress: ${processedCount}/${totalProducts} processed, ${successCount} successful, ${errorCount} failed, ${jobQueue.length} in queue`,
-          );
-        }
-      }
-
-      const duration = Date.now() - startTime;
-      const result = {
-        success: errorCount === 0,
-        totalProducts,
-        successCount,
-        errorCount,
-        errors: finalErrors,
-      };
-
-      Logger.info(
-        `[${loggerCtx}] Bulk sync completed in ${duration}ms: ${successCount}/${totalProducts} successful, ${errorCount} permanently failed`,
-      );
-
-      if (errorCount > 0) {
-        Logger.warn(
-          `[${loggerCtx}] ${errorCount} products failed permanently after retries:`,
-          finalErrors
-            .slice(0, 3)
-            .map(
-              (e) =>
-                `Product ${e.productId} (${e.attempts} attempts): ${e.error}`,
-            )
-            .join(", "),
-        );
-      }
-
-      return result;
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      Logger.error(`[${loggerCtx}] Bulk sync failed: ${errorMessage}`);
-
-      return {
-        success: false,
-        totalProducts: 0,
-        successCount,
-        errorCount: errorCount + 1,
-        errors: [
-          ...finalErrors,
-          { productId: -1, error: errorMessage, attempts: 1 },
-        ],
-      };
-    }
+    return {
+      success: result.success,
+      totalCollections: result.totalEntities,
+      successCount: result.successCount,
+      errorCount: result.errorCount,
+      errors: result.errors.map((e) => ({
+        collectionId: e.entityId,
+        error: e.error,
+        attempts: e.attempts,
+      })),
+    };
   }
 
   async syncProductToCms(jobData: SyncJobData): Promise<SyncResponse> {
