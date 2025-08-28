@@ -16,17 +16,19 @@ export class CmsSyncService {
   async syncProductToCms(jobData: SyncJobData): Promise<SyncResponse> {
     try {
       // Fetch fresh product data from database
-      const product = await this.connection.getRepository(Product).findOne({
-        where: { id: jobData.entityId },
-        relations: ["translations"],
-      });
+      const product = await this.connection.rawConnection
+        .getRepository(Product)
+        .findOne({
+          where: { id: jobData.entityId },
+          relations: { translations: true },
+        });
 
       if (!product) {
         throw new Error(`Product with ID ${jobData.entityId} not found`);
       }
 
       Logger.info(
-        `[${loggerCtx}] Product ${jobData.operationType}: ${JSON.stringify(
+        `\n[${loggerCtx}] Product ${jobData.operationType}: ${JSON.stringify(
           {
             id: product.id,
             operation: jobData.operationType,
@@ -72,7 +74,7 @@ export class CmsSyncService {
   async syncVariantToCms(jobData: SyncJobData): Promise<SyncResponse> {
     try {
       // Fetch fresh variant data from database
-      const variant = await this.connection
+      const variant = await this.connection.rawConnection
         .getRepository(ProductVariant)
         .findOne({
           where: { id: jobData.entityId },
@@ -84,7 +86,7 @@ export class CmsSyncService {
       }
 
       Logger.info(
-        `[${loggerCtx}] Variant ${jobData.operationType}: ${JSON.stringify(
+        `\n[${loggerCtx}] Variant ${jobData.operationType}: ${JSON.stringify(
           {
             id: variant.id,
             operation: jobData.operationType,
@@ -130,7 +132,7 @@ export class CmsSyncService {
   async syncCollectionToCms(jobData: SyncJobData): Promise<SyncResponse> {
     try {
       // Fetch fresh collection data from database
-      const collection = await this.connection
+      const collection = await this.connection.rawConnection
         .getRepository(Collection)
         .findOne({
           where: { id: jobData.entityId },
@@ -175,7 +177,7 @@ export class CmsSyncService {
         error instanceof Error ? error.message : "Unknown error";
       const errorStack = error instanceof Error ? error.stack : "";
       Logger.error(
-        `[${loggerCtx}] Collection sync failed: ${errorMessage}`,
+        `\n[${loggerCtx}] Collection sync failed: ${errorMessage}`,
         errorStack,
       );
       return {
