@@ -52,11 +52,21 @@ export class StoryblokService implements OnApplicationBootstrap {
         console.log(result);
         break;
       case "update":
+        console.log("getting story XXXXXXXXXXXXXXXXXXXXXXXXXXXXXxxx");
+        console.log(product.name, product.id, product.slug);
+        const storyInCMS = await this.makeStoryblokRequest({
+          method: "GET",
+          endpoint: `stories/?with_slug=${product.translations[0].slug}`,
+        });
+
+        console.log("GOT STORY XXXXXXXXXXXXXXxx");
+        console.log(storyInCMS);
         await this.makeStoryblokRequest({
           method: "PUT",
-          endpoint: `stories/${product.id}`,
+          endpoint: `stories/${storyInCMS.stories.find((story: any) => story.slug == product.translations[0].slug).id}`,
           data: this.transformProductData(product, defaultLanguageCode),
         });
+
         break;
       case "delete":
         await this.makeStoryblokRequest({
