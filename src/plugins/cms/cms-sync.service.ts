@@ -1,25 +1,74 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Inject } from "@nestjs/common";
 import {
   Logger,
   TransactionalConnection,
   Product,
   ProductVariant,
   Collection,
+  ChannelService,
+  RequestContextService,
+  LanguageCode,
 } from "@vendure/core";
-import { SyncJobData, SyncResponse } from "./types";
-import { loggerCtx } from "./constants";
-import Storyblok from "storyblok-js-client";
+import { SyncJobData, SyncResponse, PluginInitOptions } from "./types";
+import { CMS_PLUGIN_OPTIONS, loggerCtx } from "./constants";
 
 @Injectable()
 export class CmsSyncService {
-  private storyblokClient: Storyblok;
-  private spaceId: string;
+  private readonly storyblokBaseUrl = "https://mapi.storyblok.com/v1";
 
-  constructor(private connection: TransactionalConnection) {
-    this.storyblokClient = new Storyblok({
-      oauthToken: process.env.STORYBLOK_OAUTH_TOKEN,
-    });
-    this.spaceId = process.env.STORYBLOK_SPACE_ID || "";
+  constructor(
+    private connection: TransactionalConnection,
+    @Inject(CMS_PLUGIN_OPTIONS) private options: PluginInitOptions,
+    private readonly channelService: ChannelService,
+    private readonly requestContextService: RequestContextService,
+  ) {}
+
+  private async getDefaultLanguageCode(): Promise<LanguageCode> {
+    const defaultChannel = await this.channelService.getDefaultChannel();
+    return defaultChannel.defaultLanguageCode;
+  }
+
+  private getStoryblokHeaders(): Record<string, string> {
+    if (!this.options.cmsApiKey) {
+      throw new Error("Storyblok API key is not configured");
+    }
+
+    return {
+      Authorization: this.options.cmsApiKey,
+      "Content-Type": "application/json",
+    };
+  }
+
+  private async makeStoryblokRequest(
+    method: "GET" | "POST" | "PUT" | "DELETE",
+    endpoint: string,
+    data?: any,
+  ): Promise<any> {
+    const url = `${this.storyblokBaseUrl}/spaces/${this.options.storyblokSpaceId}${endpoint}`;
+
+    const config: RequestInit = {
+      method,
+      headers: this.getStoryblokHeaders(),
+    };
+
+    if (data && (method === "POST" || method === "PUT")) {
+      config.body = JSON.stringify(data);
+    }
+
+    const response = await fetch(url, config);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `Storyblok API error: ${response.status} ${response.statusText} - ${errorText}`,
+      );
+    }
+
+    if (method === "DELETE") {
+      return {}; // DELETE requests typically don't return content
+    }
+
+    return await response.json();
   }
 
   async syncProductToCms(jobData: SyncJobData): Promise<SyncResponse> {
@@ -32,6 +81,8 @@ export class CmsSyncService {
           relations: { translations: true },
         });
 
+      const defaultLanguageCode = await this.getDefaultLanguageCode();
+
       if (!product) {
         throw new Error(`Product with ID ${jobData.entityId} not found`);
       }
@@ -43,6 +94,12 @@ export class CmsSyncService {
             operation: jobData.operationType,
             timestamp: jobData.timestamp,
             translations: product.translations,
+            defaultData: product.translations.filter(
+              (t) => t.languageCode === defaultLanguageCode,
+            ),
+            otherLanguages: product.translations.filter(
+              (t) => t.languageCode !== defaultLanguageCode,
+            ),
           },
           null,
           2,
@@ -74,7 +131,6 @@ export class CmsSyncService {
         errorStack,
       );
       return {
-        // wtf calude
         success: false,
         message: `Product sync failed: ${errorMessage}`,
       };

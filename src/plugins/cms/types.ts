@@ -8,6 +8,8 @@ import { Collection, Product, ProductVariant } from "@vendure/core";
 export interface PluginInitOptions {
   cmsApiUrl?: string;
   cmsApiKey?: string;
+  storyblokSpaceId?: string;
+  storyID?: string;
   retryAttempts?: number;
   retryDelay?: number;
   enableScheduledSync?: boolean;
