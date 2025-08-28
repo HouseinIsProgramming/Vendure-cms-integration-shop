@@ -8,6 +8,7 @@ import {
 } from "@vendure/core";
 import { CMS_PLUGIN_OPTIONS } from "../constants";
 import { OperationType, PluginInitOptions } from "../types";
+import { TranslationUtils } from "../utils/translation.utils";
 const COMPONENT_TYPE = {
   product: "vendure_product",
   product_variant: "vendure_product_variant",
@@ -19,6 +20,7 @@ export class StoryblokService implements OnApplicationBootstrap {
   private readonly storyblokBaseUrl = "https://mapi.storyblok.com/v1";
   private readonly componentsPath = "components";
   private isInitialized = false;
+  private readonly translationUtils = new TranslationUtils();
 
   constructor(
     private connection: TransactionalConnection,
@@ -28,8 +30,8 @@ export class StoryblokService implements OnApplicationBootstrap {
 
   async onApplicationBootstrap() {
     if (this.processContext.isWorker) {
-      const toLog = await this.ensureContentTypesExists();
-      console.log(toLog);
+      await this.ensureContentTypesExists();
+      Logger.info("Storyblok service initialized successfully");
     }
   }
 
@@ -42,39 +44,158 @@ export class StoryblokService implements OnApplicationBootstrap {
     defaultLanguageCode: LanguageCode;
     operationType: OperationType;
   }) {
-    switch (operationType) {
-      case "create":
-        const result = await this.makeStoryblokRequest({
-          method: "POST",
-          endpoint: "stories",
-          data: this.transformProductData(product, defaultLanguageCode),
-        });
-        console.log(result);
-        break;
-      case "update":
-        console.log("getting story XXXXXXXXXXXXXXXXXXXXXXXXXXXXXxxx");
-        console.log(product.name, product.id, product.slug);
-        const storyInCMS = await this.makeStoryblokRequest({
-          method: "GET",
-          endpoint: `stories/?with_slug=${product.translations[0].slug}`,
-        });
+    try {
+      this.translationUtils.validateTranslations(
+        product.translations,
+        defaultLanguageCode,
+      );
 
-        console.log("GOT STORY XXXXXXXXXXXXXXxx");
-        console.log(storyInCMS);
-        await this.makeStoryblokRequest({
-          method: "PUT",
-          endpoint: `stories/${storyInCMS.stories.find((story: any) => story.slug == product.translations[0].slug).id}`,
-          data: this.transformProductData(product, defaultLanguageCode),
-        });
+      Logger.info(
+        `Syncing product ${product.id} (${operationType}) to Storyblok`,
+      );
 
-        break;
-      case "delete":
-        await this.makeStoryblokRequest({
-          method: "DELETE",
-          endpoint: `stories/${product.id}`,
-        });
-        break;
+      switch (operationType) {
+        case "create":
+          await this.createStoryFromProduct(product, defaultLanguageCode);
+          break;
+        case "update":
+          await this.updateStoryFromProduct(product, defaultLanguageCode);
+          break;
+        case "delete":
+          await this.deleteStoryFromProduct(product, defaultLanguageCode);
+          break;
+        default:
+          Logger.error(`Unknown operation type: ${operationType}`);
+      }
+
+      Logger.info(
+        `Successfully synced product ${product.id} (${operationType}) to Storyblok`,
+      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      Logger.error(
+        `Failed to sync product ${product.id} (${operationType}) to Storyblok: ${errorMessage}`,
+      );
+      throw error;
     }
+  }
+
+  /**
+   * Finds a Storyblok story by slug
+   * @param slug The slug to search for
+   * @returns The story object or null if not found
+   */
+  private async findStoryBySlug(slug: string): Promise<any> {
+    try {
+      const response = await this.makeStoryblokRequest({
+        method: "GET",
+        endpoint: `stories?by_slugs=${slug}`,
+      });
+
+      return response.stories.find((story: any) => story.slug === slug);
+    } catch (error) {
+      Logger.error(`Failed to find story by slug: ${slug}`, String(error));
+    }
+  }
+
+  private async createStoryFromProduct(
+    product: Product,
+    defaultLanguageCode: LanguageCode,
+  ): Promise<void> {
+    const data = this.transformProductData(product, defaultLanguageCode);
+    if (!data) {
+      Logger.error(
+        `Cannot create story: no valid translation data for product ${product.id}`,
+      );
+    }
+
+    const result = await this.makeStoryblokRequest({
+      method: "POST",
+      endpoint: "stories",
+      data,
+    });
+
+    Logger.info(
+      `Created story for product ${product.id} with Storyblok ID: ${result.story?.id}`,
+    );
+  }
+
+  private async updateStoryFromProduct(
+    product: Product,
+    defaultLanguageCode: LanguageCode,
+  ): Promise<void> {
+    const slug = this.translationUtils.getSlugByLanguage(
+      product.translations,
+      defaultLanguageCode,
+    );
+    if (!slug) {
+      Logger.error(
+        `No slug found for product ${product.id} in language ${defaultLanguageCode}`,
+      );
+      return;
+    }
+
+    const existingStory = await this.findStoryBySlug(slug);
+
+    if (!existingStory) {
+      Logger.warn(
+        `Story not found in Storyblok for slug: ${slug}. Creating new story instead.`,
+      );
+      await this.createStoryFromProduct(product, defaultLanguageCode);
+      return;
+    }
+
+    const data = this.transformProductData(product, defaultLanguageCode);
+    if (!data) {
+      Logger.error(
+        `Cannot update story: no valid translation data for product ${product.id}`,
+      );
+    }
+
+    await this.makeStoryblokRequest({
+      method: "PUT",
+      endpoint: `stories/${existingStory.id}`,
+      data,
+    });
+
+    Logger.info(
+      `Updated story for product ${product.id} (Storyblok ID: ${existingStory.id})`,
+    );
+  }
+
+  private async deleteStoryFromProduct(
+    product: Product,
+    defaultLanguageCode: LanguageCode,
+  ): Promise<void> {
+    const slug = this.translationUtils.getSlugByLanguage(
+      product.translations,
+      defaultLanguageCode,
+    );
+    if (!slug) {
+      Logger.warn(
+        `No slug found for product ${product.id}, cannot delete story`,
+      );
+      return;
+    }
+
+    const existingStory = await this.findStoryBySlug(slug);
+
+    if (!existingStory) {
+      Logger.warn(
+        `Story not found in Storyblok for slug: ${slug}, nothing to delete`,
+      );
+      return;
+    }
+
+    await this.makeStoryblokRequest({
+      method: "DELETE",
+      endpoint: `stories/${existingStory.id}`,
+    });
+
+    Logger.info(
+      `Deleted story for product ${product.id} (Storyblok ID: ${existingStory.id})`,
+    );
   }
 
   ///export interface SyncJobData {
@@ -108,11 +229,15 @@ export class StoryblokService implements OnApplicationBootstrap {
     product: Product,
     defaultLanguageCode: LanguageCode,
   ) {
-    const defaultTranslation = product.translations.find(
-      (t) => t.languageCode === defaultLanguageCode,
+    const defaultTranslation = this.translationUtils.getTranslationByLanguage(
+      product.translations,
+      defaultLanguageCode,
     );
 
     if (!defaultTranslation) {
+      Logger.warn(
+        `No translation found for product ${product.id} in language ${defaultLanguageCode}`,
+      );
       return undefined;
     }
 
@@ -259,19 +384,13 @@ export class StoryblokService implements OnApplicationBootstrap {
       }
     }
 
-    console.log(
-      "\n request made: " + url + "\n and the config: " + config.body,
-    );
+    Logger.debug(`Making Storyblok API request: ${method} ${url}`);
     const response = await fetch(url, config);
 
     if (!response.ok) {
       const errorText = await response.text();
-      Logger.error(
-        `Storyblok API error: ${response.status} ${response.statusText} - ${errorText}`,
-      );
-      Logger.error(
-        `Storyblok API error: ${response.status} ${response.statusText} - ${errorText}`,
-      );
+      const errorMessage = `Storyblok API error: ${response.status} ${response.statusText} - ${errorText}`;
+      Logger.error(errorMessage);
     }
 
     if (method === "DELETE") {
