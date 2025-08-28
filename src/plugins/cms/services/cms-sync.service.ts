@@ -1,19 +1,21 @@
-import { Injectable, Inject, OnApplicationBootstrap } from "@nestjs/common";
+import { Inject, Injectable, OnApplicationBootstrap } from "@nestjs/common";
 import {
+  ChannelService,
+  Collection,
+  ID,
+  LanguageCode,
   Logger,
-  TransactionalConnection,
+  ProcessContext,
   Product,
   ProductVariant,
-  Collection,
-  ChannelService,
+  RequestContext,
   RequestContextService,
-  LanguageCode,
-  ProcessContext,
+  TransactionalConnection,
 } from "@vendure/core";
-import { SyncJobData, SyncResponse, PluginInitOptions } from "../types";
 import { CMS_PLUGIN_OPTIONS, loggerCtx } from "../constants";
-import { StoryblokService } from "./storyblok.service";
+import { PluginInitOptions, SyncJobData, SyncResponse } from "../types";
 import { TranslationUtils } from "../utils/translation.utils";
+import { StoryblokService } from "./storyblok.service";
 
 @Injectable()
 export class CmsSyncService implements OnApplicationBootstrap {
@@ -30,8 +32,8 @@ export class CmsSyncService implements OnApplicationBootstrap {
 
   async onApplicationBootstrap() {
     if (this.processContext.isWorker) {
-      // TODO: comment to disable auto-sync on startup (not recommended for production)
-      this.syncAllProductsToCms();
+      // TODO: Uncomment to enable auto-sync on startup (not recommended for production)
+      // this.syncAllProductsToCms();
       Logger.info("CMS Sync Service initialized");
     }
   }

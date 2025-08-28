@@ -373,12 +373,12 @@ export class StoryblokService implements OnApplicationBootstrap {
       const maxAttempts = 100;
       while (!this.isInitialized && attempts < maxAttempts) {
         await new Promise((res) =>
-          setTimeout(res, Math.min(10, Math.min(1.1 ** (attempts + 1), 30000))),
+          setTimeout(res, Math.min(10 + 1.03 ** (attempts + 1), 30000)),
         );
         attempts++;
         if (attempts === maxAttempts - 1) {
           Logger.error(
-            "Reached max attempts while waitin for Storyblok content types initialization",
+            "Reached max attempts while waiting for Storyblok content types initialization",
           );
         }
       }
