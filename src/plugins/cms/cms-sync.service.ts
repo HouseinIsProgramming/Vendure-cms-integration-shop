@@ -65,6 +65,7 @@ export class CmsSyncService {
         errorStack,
       );
       return {
+        // wtf calude
         success: false,
         message: `Product sync failed: ${errorMessage}`,
       };
@@ -91,6 +92,7 @@ export class CmsSyncService {
             id: variant.id,
             operation: jobData.operationType,
             timestamp: jobData.timestamp,
+            // translation is array so you have to map it
             translations: variant.translations,
           },
           null,

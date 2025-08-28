@@ -20,7 +20,7 @@ export interface PluginInitOptions {
  * Uses entity ID references for efficient serialization and storage.
  */
 export interface SyncJobData {
-  entityType: Product | ProductVariant | Collection | string;
+  entityType: string;
   entityId: ID;
   operationType: "create" | "update" | "delete";
   timestamp: string;
