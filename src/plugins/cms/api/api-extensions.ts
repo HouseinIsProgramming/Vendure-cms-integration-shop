@@ -4,21 +4,24 @@ const cmsSyncAdminApiExtensions = gql`
   type CmsSyncResult {
     success: Boolean!
     message: String!
-    entityId: String
+    entityId: String!
+    entityType: String!
   }
 
   type CmsSyncError {
-    productId: String!
+    entityId: String!
+    entityType: String!
     error: String!
     attempts: Int!
   }
 
   type BulkCmsSyncResult {
     success: Boolean!
-    totalProducts: Int!
+    totalEntities: Int!
     successCount: Int!
     errorCount: Int!
     message: String!
+    entityType: String!
     errors: [CmsSyncError!]!
   }
 
@@ -27,6 +30,11 @@ const cmsSyncAdminApiExtensions = gql`
   }
 
   extend type Mutation {
+    # Entity-agnostic mutations
+    syncEntityToCms(id: ID!, entityType: String!): CmsSyncResult!
+    syncAllEntitiesToCms(entityType: String!): BulkCmsSyncResult!
+    
+    # Convenience mutations (backwards compatibility)
     syncProductToCms(id: ID!): CmsSyncResult!
     syncAllProductsToCms: BulkCmsSyncResult!
   }
