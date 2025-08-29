@@ -723,15 +723,25 @@ export class StoryblokService implements OnApplicationBootstrap {
 
     // Transform collections to story UUIDs
     const collectionStoryUuids: string[] = [];
-    if (collections) {
+    if (collections && collections.length > 0) {
+      // Collect all collection slugs for batch lookup
+      const collectionSlugs: string[] = [];
       for (const collection of collections) {
         const slug = this.translationUtils.getSlugByLanguage(
           collection.translations,
           defaultLanguageCode,
         );
-
         if (slug) {
-          const story = await this.findStoryBySlug(slug);
+          collectionSlugs.push(slug);
+        }
+      }
+
+      // Batch lookup all collection stories at once
+      if (collectionSlugs.length > 0) {
+        const storiesMap = await this.findStoriesBySlugs(collectionSlugs);
+        
+        // Extract UUIDs from found stories
+        for (const [slug, story] of storiesMap) {
           if (story?.uuid) {
             collectionStoryUuids.push(story.uuid.toString());
           }
