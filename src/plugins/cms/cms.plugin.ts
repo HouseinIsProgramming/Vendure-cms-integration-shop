@@ -60,11 +60,11 @@ export class CmsPlugin implements OnModuleInit {
       name: "cms-product-sync",
       process: async (job) => {
         Logger.info(
-          `\n[${loggerCtx}] Processing product sync job: ${JSON.stringify(job.data)}`,
+          `[${loggerCtx}] Processing product sync job: ${JSON.stringify(job.data)}`,
         );
         const result = await this.cmsSyncService.syncProductToCms(job.data);
         Logger.info(
-          `\n[${loggerCtx}] Product sync result: ${JSON.stringify(result)}`,
+          `[${loggerCtx}] Product sync result: ${JSON.stringify(result)}`,
         );
         return result;
       },
@@ -75,11 +75,11 @@ export class CmsPlugin implements OnModuleInit {
       name: "cms-variant-sync",
       process: async (job) => {
         Logger.info(
-          `\n[${loggerCtx}] Processing variant sync job: ${JSON.stringify(job.data)}`,
+          `[${loggerCtx}] Processing variant sync job: ${JSON.stringify(job.data)}`,
         );
         const result = await this.cmsSyncService.syncVariantToCms(job.data);
         Logger.info(
-          `\n[${loggerCtx}] Variant sync result: ${JSON.stringify(result)}`,
+          `[${loggerCtx}] Variant sync result: ${JSON.stringify(result)}`,
         );
         return result;
       },
@@ -90,11 +90,11 @@ export class CmsPlugin implements OnModuleInit {
       name: "cms-collection-sync",
       process: async (job) => {
         Logger.info(
-          `\n[${loggerCtx}] Processing collection sync job: ${JSON.stringify(job.data)}`,
+          `[${loggerCtx}] Processing collection sync job: ${JSON.stringify(job.data)}`,
         );
         const result = await this.cmsSyncService.syncCollectionToCms(job.data);
         Logger.info(
-          `\n[${loggerCtx}] Collection sync result: ${JSON.stringify(result)}`,
+          `[${loggerCtx}] Collection sync result: ${JSON.stringify(result)}`,
         );
         return result;
       },

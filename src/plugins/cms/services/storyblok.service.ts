@@ -1,11 +1,9 @@
-// TODO: Add ensure content type is valid (contains multiselect and ID field)
-//
-
 import { Inject, Injectable, OnApplicationBootstrap } from "@nestjs/common";
 import {
   LanguageCode,
   Product,
   ProductVariant,
+  Collection,
   TransactionalConnection,
   ProcessContext,
   Logger,
@@ -147,6 +145,62 @@ export class StoryblokService implements OnApplicationBootstrap {
         error instanceof Error ? error.message : "Unknown error";
       Logger.error(
         `Failed to sync product variant ${variant.id} (${operationType}) to Storyblok: ${errorMessage}`,
+      );
+      throw error;
+    }
+  }
+
+  async syncCollection({
+    collection,
+    defaultLanguageCode,
+    operationType,
+    collectionSlug,
+  }: {
+    collection: Collection;
+    defaultLanguageCode: LanguageCode;
+    operationType: OperationType;
+    collectionSlug?: string | null;
+  }) {
+    try {
+      this.translationUtils.validateTranslations(
+        collection.translations,
+        defaultLanguageCode,
+      );
+
+      Logger.info(
+        `Syncing collection ${collection.id} (${operationType}) to Storyblok`,
+      );
+
+      switch (operationType) {
+        case "create":
+          await this.createStoryFromCollection(
+            collection,
+            defaultLanguageCode,
+            collectionSlug,
+          );
+          break;
+        case "update":
+          await this.updateStoryFromCollection(
+            collection,
+            defaultLanguageCode,
+            collectionSlug,
+          );
+          break;
+        case "delete":
+          await this.deleteStoryFromCollection(collection, defaultLanguageCode);
+          break;
+        default:
+          Logger.error(`Unknown operation type: ${operationType}`);
+      }
+
+      Logger.info(
+        `Successfully synced collection ${collection.id} (${operationType}) to Storyblok`,
+      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      Logger.error(
+        `Failed to sync collection ${collection.id} (${operationType}) to Storyblok: ${errorMessage}`,
       );
       throw error;
     }
@@ -475,6 +529,118 @@ export class StoryblokService implements OnApplicationBootstrap {
     );
   }
 
+  // Collection-specific CRUD methods
+  private async createStoryFromCollection(
+    collection: Collection,
+    defaultLanguageCode: LanguageCode,
+    collectionSlug?: string | null,
+  ): Promise<void> {
+    const data = await this.transformCollectionData(
+      collection,
+      defaultLanguageCode,
+      collectionSlug,
+    );
+    if (!data) {
+      Logger.error(
+        `Cannot create story: no valid translation data for collection ${collection.id}`,
+      );
+      return;
+    }
+
+    const result = await this.makeStoryblokRequest({
+      method: "POST",
+      endpoint: "stories",
+      data,
+    });
+
+    Logger.info(
+      `Created story for collection ${collection.id} with Storyblok ID: ${result.story?.id}`,
+    );
+  }
+
+  private async updateStoryFromCollection(
+    collection: Collection,
+    defaultLanguageCode: LanguageCode,
+    collectionSlug?: string | null,
+  ): Promise<void> {
+    const slug = this.translationUtils.getSlugByLanguage(
+      collection.translations,
+      defaultLanguageCode,
+    );
+    if (!slug) {
+      Logger.error(
+        `No slug found for collection ${collection.id} in language ${defaultLanguageCode}`,
+      );
+      return;
+    }
+
+    const existingStory = await this.findStoryBySlug(slug);
+
+    if (!existingStory) {
+      Logger.warn(
+        `Story not found in Storyblok for slug: ${slug}. Creating new story instead.`,
+      );
+      await this.createStoryFromCollection(collection, defaultLanguageCode);
+      return;
+    }
+
+    const data = await this.transformCollectionData(
+      collection,
+      defaultLanguageCode,
+      collectionSlug,
+    );
+    if (!data) {
+      Logger.error(
+        `Cannot update story: no valid translation data for collection ${collection.id}`,
+      );
+      return;
+    }
+
+    await this.makeStoryblokRequest({
+      method: "PUT",
+      endpoint: `stories/${existingStory.id}`,
+      data,
+    });
+
+    Logger.info(
+      `Updated story for collection ${collection.id} (Storyblok ID: ${existingStory.id})`,
+    );
+  }
+
+  private async deleteStoryFromCollection(
+    collection: Collection,
+    defaultLanguageCode: LanguageCode,
+  ): Promise<void> {
+    const slug = this.translationUtils.getSlugByLanguage(
+      collection.translations,
+      defaultLanguageCode,
+    );
+    if (!slug) {
+      Logger.warn(
+        `No slug found for collection ${collection.id}, cannot delete story`,
+      );
+      return;
+    }
+
+    const existingStory = await this.findStoryBySlug(slug);
+
+    if (!existingStory) {
+      Logger.warn(
+        `Story not found in Storyblok for slug: ${slug}, nothing to delete`,
+      );
+      return;
+    }
+
+    await this.makeStoryblokRequest({
+      method: "DELETE",
+      endpoint: `stories/${existingStory.id}`,
+    });
+
+    Logger.info(
+      `Deleted story for collection ${collection.id} (Storyblok ID: ${existingStory.id})`,
+    );
+  }
+
   private async transformVariantData(
     variant: ProductVariant,
     defaultLanguageCode: LanguageCode,
@@ -514,33 +680,6 @@ export class StoryblokService implements OnApplicationBootstrap {
     return result;
   }
 
-  ///export interface SyncJobData {
-  //   entityType: string;
-  //   entityId: ID;
-  //   operationType: "create" | "update" | "delete";
-  //   timestamp: string;
-  //   retryCount: number;
-  // }
-
-  // Logger.info(
-  //   `\n[${loggerCtx}] Product ${jobData.operationType}: ${JSON.stringify(
-  //     {
-  //       id: product.id,
-  //       operation: jobData.operationType,
-  //       timestamp: jobData.timestamp,
-  //       translations: product.translations,
-  //       defaultData: product.translations.filter(
-  //         (t) => t.languageCode === defaultLanguageCode,
-  //       ),
-  //       otherLanguages: product.translations.filter(
-  //         (t) => t.languageCode !== defaultLanguageCode,
-  //       ),
-  //     },
-  //     null,
-  //     2,
-  //   )}`,
-  // );
-
   private async transformProductData(
     product: Product,
     defaultLanguageCode: LanguageCode,
@@ -565,11 +704,6 @@ export class StoryblokService implements OnApplicationBootstrap {
       productSlug,
     );
 
-    console.log(variantStoryIds);
-    console.log(
-      "REEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEe",
-    );
-
     const slug = this.translationUtils.getSlugByLanguage(
       product.translations,
       defaultLanguageCode,
@@ -583,6 +717,43 @@ export class StoryblokService implements OnApplicationBootstrap {
           component: COMPONENT_TYPE.product,
           vendureId: product.id.toString(),
           variants: variantStoryIds,
+        },
+      } as any,
+      publish: 1,
+    };
+
+    return result;
+  }
+
+  private async transformCollectionData(
+    collection: Collection,
+    defaultLanguageCode: LanguageCode,
+    collectionSlug?: string | null,
+  ) {
+    const defaultTranslation = this.translationUtils.getTranslationByLanguage(
+      collection.translations,
+      defaultLanguageCode,
+    );
+
+    if (!defaultTranslation) {
+      Logger.warn(
+        `No translation found for collection ${collection.id} in language ${defaultLanguageCode}`,
+      );
+      return undefined;
+    }
+
+    const slug = this.translationUtils.getSlugByLanguage(
+      collection.translations,
+      defaultLanguageCode,
+    );
+
+    const result = {
+      story: {
+        name: defaultTranslation?.name,
+        slug: slug,
+        content: {
+          component: COMPONENT_TYPE.collection,
+          vendureId: collection.id.toString(),
         },
       } as any,
       publish: 1,

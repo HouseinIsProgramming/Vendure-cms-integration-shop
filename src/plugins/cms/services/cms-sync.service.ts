@@ -1,5 +1,4 @@
 // TODO: Remove onApplicationBootstrap
-// TODO: Add real api calls to collection and variants
 
 import { Inject, Injectable, OnApplicationBootstrap } from "@nestjs/common";
 import {
@@ -361,7 +360,7 @@ export class CmsSyncService implements OnApplicationBootstrap {
       }
 
       Logger.info(
-        `\n[${loggerCtx}] Product ${jobData.operationType}: ${JSON.stringify(
+        `[${loggerCtx}] Product ${jobData.operationType}: ${JSON.stringify(
           {
             id: product.id,
             operation: jobData.operationType,
@@ -440,7 +439,7 @@ export class CmsSyncService implements OnApplicationBootstrap {
         : `variant-${variant.id}`;
 
       Logger.info(
-        `\n[${loggerCtx}] Variant ${jobData.operationType}: ${JSON.stringify(
+        `[${loggerCtx}] Variant ${jobData.operationType}: ${JSON.stringify(
           {
             id: variant.id,
             operation: jobData.operationType,
@@ -517,27 +516,18 @@ export class CmsSyncService implements OnApplicationBootstrap {
       const operationType = jobData.operationType;
       const defaultLanguageCode = await this.getDefaultLanguageCode();
 
-      // Get product slug for variant lookups
-      const productSlug = this.translationUtils.getSlugByLanguage(
+      // Get collection slug for the sync operation
+      const collectionSlug = this.translationUtils.getSlugByLanguage(
         collection.translations,
         defaultLanguageCode,
       );
 
       await this.storyblockService.syncCollection({
-        // IMPLEMENT THIS
         collection,
         defaultLanguageCode,
         operationType,
-        productSlug,
+        collectionSlug,
       });
-
-      // TODO: Replace with actual CMS API call
-      // Example implementation:
-      // const response = await this.cmsApiClient.post('/collections', {
-      //     id: collection.id,
-      //     operation: jobData.operationType,
-      //     translations: collection.translations
-      // });
 
       return {
         success: true,
@@ -549,7 +539,7 @@ export class CmsSyncService implements OnApplicationBootstrap {
         error instanceof Error ? error.message : "Unknown error";
       const errorStack = error instanceof Error ? error.stack : "";
       Logger.error(
-        `\n[${loggerCtx}] Collection sync failed: ${errorMessage}`,
+        `[${loggerCtx}] Collection sync failed: ${errorMessage}`,
         errorStack,
       );
       return {
