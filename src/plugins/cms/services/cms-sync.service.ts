@@ -421,21 +421,27 @@ export class CmsSyncService implements OnApplicationBootstrap {
 
   async syncVariantToCms(jobData: SyncJobData): Promise<SyncResponse> {
     try {
-      // Fetch fresh variant data from database
+      // Fetch fresh variant data from database with product relation
       const variant = await this.connection.rawConnection
         .getRepository(ProductVariant)
         .findOne({
           where: { id: jobData.entityId },
-          relations: ["translations"],
+          relations: ["translations", "product", "product.translations"],
         });
 
       const operationType = jobData.operationType;
-
       const defaultLanguageCode = await this.getDefaultLanguageCode();
 
       if (!variant) {
         throw new Error(`ProductVariant with ID ${jobData.entityId} not found`);
       }
+
+      // Generate variant slug from parent product slug + variant ID
+      const productSlug = this.translationUtils.getSlugByLanguage(
+        variant.product.translations,
+        defaultLanguageCode,
+      );
+      const variantSlug = productSlug ? `${productSlug}-variant-${variant.id}` : `variant-${variant.id}`;
 
       Logger.info(
         `\n[${loggerCtx}] Variant ${jobData.operationType}: ${JSON.stringify(
@@ -444,6 +450,7 @@ export class CmsSyncService implements OnApplicationBootstrap {
             operation: jobData.operationType,
             timestamp: jobData.timestamp,
             translations: variant.translations,
+            generatedSlug: variantSlug,
             defaultData: this.translationUtils.getTranslationByLanguage(
               variant.translations,
               defaultLanguageCode,
@@ -458,6 +465,7 @@ export class CmsSyncService implements OnApplicationBootstrap {
         variant,
         defaultLanguageCode,
         operationType,
+        variantSlug,
       });
 
       // Simulate API call delay

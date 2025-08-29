@@ -1,6 +1,7 @@
-// TODO: Remove onApplicationBootstrap
+// TODO: Add ensure content type is valid (contains multiselect and ID field)
+//
 
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, OnApplicationBootstrap } from "@nestjs/common";
 import {
   LanguageCode,
   Product,
@@ -19,7 +20,7 @@ const COMPONENT_TYPE = {
 };
 
 @Injectable()
-export class StoryblokService {
+export class StoryblokService implements OnApplicationBootstrap {
   private readonly storyblokBaseUrl = "https://mapi.storyblok.com/v1";
   private readonly componentsPath = "components";
   private isInitialized = false;
@@ -30,6 +31,10 @@ export class StoryblokService {
     private processContext: ProcessContext,
     @Inject(CMS_PLUGIN_OPTIONS) private options: PluginInitOptions,
   ) {}
+
+  async onApplicationBootstrap() {
+    this.ensureContentTypesExists();
+  }
 
   async syncProduct({
     product,
@@ -91,10 +96,12 @@ export class StoryblokService {
     variant,
     defaultLanguageCode,
     operationType,
+    variantSlug,
   }: {
     variant: ProductVariant;
     defaultLanguageCode: LanguageCode;
     operationType: OperationType;
+    variantSlug: string;
   }) {
     try {
       this.translationUtils.validateTranslations(
@@ -108,13 +115,25 @@ export class StoryblokService {
 
       switch (operationType) {
         case "create":
-          await this.createStoryFromVariant(variant, defaultLanguageCode);
+          await this.createStoryFromVariant(
+            variant,
+            defaultLanguageCode,
+            variantSlug,
+          );
           break;
         case "update":
-          await this.updateStoryFromVariant(variant, defaultLanguageCode);
+          await this.updateStoryFromVariant(
+            variant,
+            defaultLanguageCode,
+            variantSlug,
+          );
           break;
         case "delete":
-          await this.deleteStoryFromVariant(variant, defaultLanguageCode);
+          await this.deleteStoryFromVariant(
+            variant,
+            defaultLanguageCode,
+            variantSlug,
+          );
           break;
         default:
           Logger.error(`Unknown operation type: ${operationType}`);
@@ -365,8 +384,13 @@ export class StoryblokService {
   private async createStoryFromVariant(
     variant: ProductVariant,
     defaultLanguageCode: LanguageCode,
+    variantSlug: string,
   ): Promise<void> {
-    const data = await this.transformVariantData(variant, defaultLanguageCode);
+    const data = await this.transformVariantData(
+      variant,
+      defaultLanguageCode,
+      variantSlug,
+    );
     if (!data) {
       Logger.error(
         `Cannot create story: no valid translation data for variant ${variant.id}`,
@@ -388,29 +412,27 @@ export class StoryblokService {
   private async updateStoryFromVariant(
     variant: ProductVariant,
     defaultLanguageCode: LanguageCode,
+    variantSlug: string,
   ): Promise<void> {
-    const slug = this.translationUtils.getSlugByLanguage(
-      variant.translations,
-      defaultLanguageCode,
-    );
-    if (!slug) {
-      Logger.error(
-        `No slug found for variant ${variant.id} in language ${defaultLanguageCode}`,
-      );
-      return;
-    }
-
-    const existingStory = await this.findStoryBySlug(slug);
+    const existingStory = await this.findStoryBySlug(variantSlug);
 
     if (!existingStory) {
       Logger.warn(
-        `Story not found in Storyblok for slug: ${slug}. Creating new story instead.`,
+        `Story not found in Storyblok for slug: ${variantSlug}. Creating new story instead.`,
       );
-      await this.createStoryFromVariant(variant, defaultLanguageCode);
+      await this.createStoryFromVariant(
+        variant,
+        defaultLanguageCode,
+        variantSlug,
+      );
       return;
     }
 
-    const data = await this.transformVariantData(variant, defaultLanguageCode);
+    const data = await this.transformVariantData(
+      variant,
+      defaultLanguageCode,
+      variantSlug,
+    );
     if (!data) {
       Logger.error(
         `Cannot update story: no valid translation data for variant ${variant.id}`,
@@ -432,23 +454,13 @@ export class StoryblokService {
   private async deleteStoryFromVariant(
     variant: ProductVariant,
     defaultLanguageCode: LanguageCode,
+    variantSlug: string,
   ): Promise<void> {
-    const slug = this.translationUtils.getSlugByLanguage(
-      variant.translations,
-      defaultLanguageCode,
-    );
-    if (!slug) {
-      Logger.warn(
-        `No slug found for variant ${variant.id}, cannot delete story`,
-      );
-      return;
-    }
-
-    const existingStory = await this.findStoryBySlug(slug);
+    const existingStory = await this.findStoryBySlug(variantSlug);
 
     if (!existingStory) {
       Logger.warn(
-        `Story not found in Storyblok for slug: ${slug}, nothing to delete`,
+        `Story not found in Storyblok for slug: ${variantSlug}, nothing to delete`,
       );
       return;
     }
@@ -466,6 +478,7 @@ export class StoryblokService {
   private async transformVariantData(
     variant: ProductVariant,
     defaultLanguageCode: LanguageCode,
+    variantSlug: string,
   ) {
     const defaultTranslation = this.translationUtils.getTranslationByLanguage(
       variant.translations,
@@ -485,15 +498,10 @@ export class StoryblokService {
       defaultLanguageCode,
     );
 
-    const slug = this.translationUtils.getSlugByLanguage(
-      variant.translations,
-      defaultLanguageCode,
-    );
-
     const result = {
       story: {
         name: defaultTranslation?.name,
-        slug: slug,
+        slug: variantSlug,
         content: {
           component: COMPONENT_TYPE.product_variant,
           vendureId: variant.id.toString(),
@@ -726,7 +734,10 @@ export class StoryblokService {
       const maxAttempts = 100;
       while (!this.isInitialized && attempts < maxAttempts) {
         await new Promise((res) =>
-          setTimeout(res, Math.min(10 + 1.03 ** (attempts + 1), 30000)),
+          setTimeout(
+            res,
+            Math.min(10 + 1.03 ** (attempts + 1) * attempts * 0.5, 30000),
+          ),
         );
         attempts++;
         if (attempts === maxAttempts - 1) {
