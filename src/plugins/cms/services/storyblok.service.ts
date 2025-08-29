@@ -203,7 +203,7 @@ export class StoryblokService implements OnApplicationBootstrap {
    * @param defaultLanguageCode The default language code to use for slug lookup
    * @returns Array of Storyblok story IDs
    */
-  private async findVariantStoriesForProduct(
+  private async findVariantStoriesForProductUuids(
     productId: string | number,
     defaultLanguageCode: LanguageCode,
     productSlug?: string | null,
@@ -219,8 +219,8 @@ export class StoryblokService implements OnApplicationBootstrap {
       // Generate variant slug from product slug + variant ID
       const variantSlug = `${productSlug}-variant-${variant.id}`;
       const story = await this.findStoryBySlug(variantSlug);
-      if (story?.id) {
-        storyIds.push(story.id.toString());
+      if (story?.uuid) {
+        storyIds.push(story.uuid.toString());
       }
     }
 
@@ -559,10 +559,15 @@ export class StoryblokService implements OnApplicationBootstrap {
     }
 
     // Find all variant stories for this product
-    const variantStoryIds = await this.findVariantStoriesForProduct(
+    const variantStoryIds = await this.findVariantStoriesForProductUuids(
       product.id,
       defaultLanguageCode,
       productSlug,
+    );
+
+    console.log(variantStoryIds);
+    console.log(
+      "REEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEe",
     );
 
     const slug = this.translationUtils.getSlugByLanguage(
