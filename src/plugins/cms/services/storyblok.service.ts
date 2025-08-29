@@ -1,6 +1,6 @@
 // TODO: Remove onApplicationBootstrap
 
-import { Inject, Injectable, OnApplicationBootstrap } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import {
   LanguageCode,
   Product,
@@ -19,7 +19,7 @@ const COMPONENT_TYPE = {
 };
 
 @Injectable()
-export class StoryblokService implements OnApplicationBootstrap {
+export class StoryblokService {
   private readonly storyblokBaseUrl = "https://mapi.storyblok.com/v1";
   private readonly componentsPath = "components";
   private isInitialized = false;
@@ -30,13 +30,6 @@ export class StoryblokService implements OnApplicationBootstrap {
     private processContext: ProcessContext,
     @Inject(CMS_PLUGIN_OPTIONS) private options: PluginInitOptions,
   ) {}
-
-  async onApplicationBootstrap() {
-    if (this.processContext.isWorker) {
-      await this.ensureContentTypesExists();
-      Logger.info("Storyblok service initialized successfully");
-    }
-  }
 
   async syncProduct({
     product,
@@ -61,10 +54,18 @@ export class StoryblokService implements OnApplicationBootstrap {
 
       switch (operationType) {
         case "create":
-          await this.createStoryFromProduct(product, defaultLanguageCode, productSlug);
+          await this.createStoryFromProduct(
+            product,
+            defaultLanguageCode,
+            productSlug,
+          );
           break;
         case "update":
-          await this.updateStoryFromProduct(product, defaultLanguageCode, productSlug);
+          await this.updateStoryFromProduct(
+            product,
+            defaultLanguageCode,
+            productSlug,
+          );
           break;
         case "delete":
           await this.deleteStoryFromProduct(product, defaultLanguageCode);
@@ -254,7 +255,11 @@ export class StoryblokService implements OnApplicationBootstrap {
     defaultLanguageCode: LanguageCode,
     productSlug?: string | null,
   ): Promise<void> {
-    const data = await this.transformProductData(product, defaultLanguageCode, productSlug);
+    const data = await this.transformProductData(
+      product,
+      defaultLanguageCode,
+      productSlug,
+    );
     if (!data) {
       Logger.error(
         `Cannot create story: no valid translation data for product ${product.id}`,
@@ -299,7 +304,11 @@ export class StoryblokService implements OnApplicationBootstrap {
       return;
     }
 
-    const data = await this.transformProductData(product, defaultLanguageCode, productSlug);
+    const data = await this.transformProductData(
+      product,
+      defaultLanguageCode,
+      productSlug,
+    );
     if (!data) {
       Logger.error(
         `Cannot update story: no valid translation data for product ${product.id}`,
@@ -638,8 +647,8 @@ export class StoryblokService implements OnApplicationBootstrap {
             ...baseSchema,
             ...relationshipSchema,
           },
-          is_root: false,
-          is_nestable: true,
+          is_root: true,
+          is_nestable: false,
         },
       };
     };
