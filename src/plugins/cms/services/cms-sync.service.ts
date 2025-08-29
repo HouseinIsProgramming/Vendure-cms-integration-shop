@@ -1,3 +1,6 @@
+// TODO: Remove onApplicationBootstrap
+// TODO: Add real api calls to collection and variants
+
 import { Inject, Injectable, OnApplicationBootstrap } from "@nestjs/common";
 import {
   ChannelService,
@@ -40,12 +43,12 @@ export class CmsSyncService implements OnApplicationBootstrap {
   async onApplicationBootstrap() {
     if (this.processContext.isWorker) {
       // TODO: Uncomment to enable auto-sync on startup (not recommended for production)
-      await this.syncAllEntitiesToCmsGeneric(
-        "Product",
-        Product,
-        this.syncProductToCms.bind(this),
-      );
-      Logger.info("CMS Sync Service initialized");
+      // await this.syncAllEntitiesToCmsGeneric(
+      //   "Product",
+      //   Product,
+      //   this.syncProductToCms.bind(this),
+      // );
+      // Logger.info("CMS Sync Service initialized");
     }
   }
   ensureContentTypesExists() {
@@ -372,10 +375,17 @@ export class CmsSyncService implements OnApplicationBootstrap {
         )}`,
       );
 
+      // Get product slug for variant lookups
+      const productSlug = this.translationUtils.getSlugByLanguage(
+        product.translations,
+        defaultLanguageCode,
+      );
+
       await this.storyblockService.syncProduct({
         product,
         defaultLanguageCode,
         operationType,
+        productSlug,
       });
 
       // Simulate API call delay
@@ -419,6 +429,10 @@ export class CmsSyncService implements OnApplicationBootstrap {
           relations: ["translations"],
         });
 
+      const operationType = jobData.operationType;
+
+      const defaultLanguageCode = await this.getDefaultLanguageCode();
+
       if (!variant) {
         throw new Error(`ProductVariant with ID ${jobData.entityId} not found`);
       }
@@ -429,24 +443,25 @@ export class CmsSyncService implements OnApplicationBootstrap {
             id: variant.id,
             operation: jobData.operationType,
             timestamp: jobData.timestamp,
-            // translation is array so you have to map it
             translations: variant.translations,
+            defaultData: this.translationUtils.getTranslationByLanguage(
+              variant.translations,
+              defaultLanguageCode,
+            ),
           },
           null,
           2,
         )}`,
       );
 
+      await this.storyblockService.syncProductVariant({
+        variant,
+        defaultLanguageCode,
+        operationType,
+      });
+
       // Simulate API call delay
       await new Promise((resolve) => setTimeout(resolve, 100));
-
-      // TODO: Replace with actual CMS API call
-      // Example implementation:
-      // const response = await this.cmsApiClient.post('/variants', {
-      //     id: variant.id,
-      //     operation: jobData.operationType,
-      //     translations: variant.translations
-      // });
 
       return {
         success: true,

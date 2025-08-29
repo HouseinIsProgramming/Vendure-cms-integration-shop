@@ -1,7 +1,10 @@
+// TODO: Remove onApplicationBootstrap
+
 import { Inject, Injectable, OnApplicationBootstrap } from "@nestjs/common";
 import {
   LanguageCode,
   Product,
+  ProductVariant,
   TransactionalConnection,
   ProcessContext,
   Logger,
@@ -39,10 +42,12 @@ export class StoryblokService implements OnApplicationBootstrap {
     product,
     defaultLanguageCode,
     operationType,
+    productSlug,
   }: {
     product: Product;
     defaultLanguageCode: LanguageCode;
     operationType: OperationType;
+    productSlug?: string | null;
   }) {
     try {
       this.translationUtils.validateTranslations(
@@ -56,10 +61,10 @@ export class StoryblokService implements OnApplicationBootstrap {
 
       switch (operationType) {
         case "create":
-          await this.createStoryFromProduct(product, defaultLanguageCode);
+          await this.createStoryFromProduct(product, defaultLanguageCode, productSlug);
           break;
         case "update":
-          await this.updateStoryFromProduct(product, defaultLanguageCode);
+          await this.updateStoryFromProduct(product, defaultLanguageCode, productSlug);
           break;
         case "delete":
           await this.deleteStoryFromProduct(product, defaultLanguageCode);
@@ -76,6 +81,52 @@ export class StoryblokService implements OnApplicationBootstrap {
         error instanceof Error ? error.message : "Unknown error";
       Logger.error(
         `Failed to sync product ${product.id} (${operationType}) to Storyblok: ${errorMessage}`,
+      );
+      throw error;
+    }
+  }
+
+  async syncProductVariant({
+    variant,
+    defaultLanguageCode,
+    operationType,
+  }: {
+    variant: ProductVariant;
+    defaultLanguageCode: LanguageCode;
+    operationType: OperationType;
+  }) {
+    try {
+      this.translationUtils.validateTranslations(
+        variant.translations,
+        defaultLanguageCode,
+      );
+
+      Logger.info(
+        `Syncing product variant ${variant.id} (${operationType}) to Storyblok`,
+      );
+
+      switch (operationType) {
+        case "create":
+          await this.createStoryFromVariant(variant, defaultLanguageCode);
+          break;
+        case "update":
+          await this.updateStoryFromVariant(variant, defaultLanguageCode);
+          break;
+        case "delete":
+          await this.deleteStoryFromVariant(variant, defaultLanguageCode);
+          break;
+        default:
+          Logger.error(`Unknown operation type: ${operationType}`);
+      }
+
+      Logger.info(
+        `Successfully synced product variant ${variant.id} (${operationType}) to Storyblok`,
+      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      Logger.error(
+        `Failed to sync product variant ${variant.id} (${operationType}) to Storyblok: ${errorMessage}`,
       );
       throw error;
     }
@@ -99,15 +150,116 @@ export class StoryblokService implements OnApplicationBootstrap {
     }
   }
 
+  /**
+   * Finds all product variants for a given product ID
+   * @param productId The Vendure product ID
+   * @returns Array of ProductVariant entities
+   */
+  private async findProductVariants(
+    productId: string | number,
+  ): Promise<ProductVariant[]> {
+    try {
+      const variants = await this.connection.rawConnection
+        .getRepository(ProductVariant)
+        .find({
+          where: { productId: productId as any },
+          relations: ["translations"],
+          order: { id: "ASC" },
+        });
+
+      return variants;
+    } catch (error) {
+      Logger.error(
+        `Failed to find variants for product ${productId}`,
+        String(error),
+      );
+      return [];
+    }
+  }
+
+  /**
+   * Finds all Storyblok stories that represent variants of a product
+   * @param productId The Vendure product ID
+   * @param defaultLanguageCode The default language code to use for slug lookup
+   * @returns Array of Storyblok story IDs
+   */
+  private async findVariantStoriesForProduct(
+    productId: string | number,
+    defaultLanguageCode: LanguageCode,
+    productSlug?: string | null,
+  ): Promise<string[]> {
+    if (!productSlug) {
+      return [];
+    }
+
+    const variants = await this.findProductVariants(productId);
+    const storyIds: string[] = [];
+
+    for (const variant of variants) {
+      // Generate variant slug from product slug + variant ID
+      const variantSlug = `${productSlug}-variant-${variant.id}`;
+      const story = await this.findStoryBySlug(variantSlug);
+      if (story?.id) {
+        storyIds.push(story.id.toString());
+      }
+    }
+
+    return storyIds;
+  }
+
+  /**
+   * Finds the parent product story for a given variant
+   * @param variant The ProductVariant entity
+   * @param defaultLanguageCode The default language code to use for slug lookup
+   * @returns Storyblok story ID of the parent product or null
+   */
+  private async findParentProductStory(
+    variant: ProductVariant,
+    defaultLanguageCode: LanguageCode,
+  ): Promise<string | null> {
+    try {
+      const product = await this.connection.rawConnection
+        .getRepository(Product)
+        .findOne({
+          where: { id: variant.productId },
+          relations: ["translations"],
+        });
+
+      if (!product) {
+        return null;
+      }
+
+      const slug = this.translationUtils.getSlugByLanguage(
+        product.translations,
+        defaultLanguageCode,
+      );
+
+      if (slug) {
+        const story = await this.findStoryBySlug(slug);
+        return story?.id?.toString() || null;
+      }
+
+      return null;
+    } catch (error) {
+      Logger.error(
+        `Failed to find parent product for variant ${variant.id}`,
+        String(error),
+      );
+      return null;
+    }
+  }
+
   private async createStoryFromProduct(
     product: Product,
     defaultLanguageCode: LanguageCode,
+    productSlug?: string | null,
   ): Promise<void> {
-    const data = this.transformProductData(product, defaultLanguageCode);
+    const data = await this.transformProductData(product, defaultLanguageCode, productSlug);
     if (!data) {
       Logger.error(
         `Cannot create story: no valid translation data for product ${product.id}`,
       );
+      return;
     }
 
     const result = await this.makeStoryblokRequest({
@@ -124,6 +276,7 @@ export class StoryblokService implements OnApplicationBootstrap {
   private async updateStoryFromProduct(
     product: Product,
     defaultLanguageCode: LanguageCode,
+    productSlug?: string | null,
   ): Promise<void> {
     const slug = this.translationUtils.getSlugByLanguage(
       product.translations,
@@ -146,11 +299,12 @@ export class StoryblokService implements OnApplicationBootstrap {
       return;
     }
 
-    const data = this.transformProductData(product, defaultLanguageCode);
+    const data = await this.transformProductData(product, defaultLanguageCode, productSlug);
     if (!data) {
       Logger.error(
         `Cannot update story: no valid translation data for product ${product.id}`,
       );
+      return;
     }
 
     await this.makeStoryblokRequest({
@@ -198,6 +352,151 @@ export class StoryblokService implements OnApplicationBootstrap {
     );
   }
 
+  // Variant-specific CRUD methods
+  private async createStoryFromVariant(
+    variant: ProductVariant,
+    defaultLanguageCode: LanguageCode,
+  ): Promise<void> {
+    const data = await this.transformVariantData(variant, defaultLanguageCode);
+    if (!data) {
+      Logger.error(
+        `Cannot create story: no valid translation data for variant ${variant.id}`,
+      );
+      return;
+    }
+
+    const result = await this.makeStoryblokRequest({
+      method: "POST",
+      endpoint: "stories",
+      data,
+    });
+
+    Logger.info(
+      `Created story for variant ${variant.id} with Storyblok ID: ${result.story?.id}`,
+    );
+  }
+
+  private async updateStoryFromVariant(
+    variant: ProductVariant,
+    defaultLanguageCode: LanguageCode,
+  ): Promise<void> {
+    const slug = this.translationUtils.getSlugByLanguage(
+      variant.translations,
+      defaultLanguageCode,
+    );
+    if (!slug) {
+      Logger.error(
+        `No slug found for variant ${variant.id} in language ${defaultLanguageCode}`,
+      );
+      return;
+    }
+
+    const existingStory = await this.findStoryBySlug(slug);
+
+    if (!existingStory) {
+      Logger.warn(
+        `Story not found in Storyblok for slug: ${slug}. Creating new story instead.`,
+      );
+      await this.createStoryFromVariant(variant, defaultLanguageCode);
+      return;
+    }
+
+    const data = await this.transformVariantData(variant, defaultLanguageCode);
+    if (!data) {
+      Logger.error(
+        `Cannot update story: no valid translation data for variant ${variant.id}`,
+      );
+      return;
+    }
+
+    await this.makeStoryblokRequest({
+      method: "PUT",
+      endpoint: `stories/${existingStory.id}`,
+      data,
+    });
+
+    Logger.info(
+      `Updated story for variant ${variant.id} (Storyblok ID: ${existingStory.id})`,
+    );
+  }
+
+  private async deleteStoryFromVariant(
+    variant: ProductVariant,
+    defaultLanguageCode: LanguageCode,
+  ): Promise<void> {
+    const slug = this.translationUtils.getSlugByLanguage(
+      variant.translations,
+      defaultLanguageCode,
+    );
+    if (!slug) {
+      Logger.warn(
+        `No slug found for variant ${variant.id}, cannot delete story`,
+      );
+      return;
+    }
+
+    const existingStory = await this.findStoryBySlug(slug);
+
+    if (!existingStory) {
+      Logger.warn(
+        `Story not found in Storyblok for slug: ${slug}, nothing to delete`,
+      );
+      return;
+    }
+
+    await this.makeStoryblokRequest({
+      method: "DELETE",
+      endpoint: `stories/${existingStory.id}`,
+    });
+
+    Logger.info(
+      `Deleted story for variant ${variant.id} (Storyblok ID: ${existingStory.id})`,
+    );
+  }
+
+  private async transformVariantData(
+    variant: ProductVariant,
+    defaultLanguageCode: LanguageCode,
+  ) {
+    const defaultTranslation = this.translationUtils.getTranslationByLanguage(
+      variant.translations,
+      defaultLanguageCode,
+    );
+
+    if (!defaultTranslation) {
+      Logger.warn(
+        `No translation found for variant ${variant.id} in language ${defaultLanguageCode}`,
+      );
+      return undefined;
+    }
+
+    // Find parent product story for this variant
+    const parentProductStoryId = await this.findParentProductStory(
+      variant,
+      defaultLanguageCode,
+    );
+
+    const slug = this.translationUtils.getSlugByLanguage(
+      variant.translations,
+      defaultLanguageCode,
+    );
+
+    const result = {
+      story: {
+        name: defaultTranslation?.name,
+        slug: slug,
+        content: {
+          component: COMPONENT_TYPE.product_variant,
+          vendureId: variant.id.toString(),
+          parentProduct: parentProductStoryId ? [parentProductStoryId] : [],
+        },
+      } as any,
+      publish: 1,
+    };
+
+    return result;
+  }
+
   ///export interface SyncJobData {
   //   entityType: string;
   //   entityId: ID;
@@ -225,9 +524,10 @@ export class StoryblokService implements OnApplicationBootstrap {
   //   )}`,
   // );
 
-  private transformProductData(
+  private async transformProductData(
     product: Product,
     defaultLanguageCode: LanguageCode,
+    productSlug?: string | null,
   ) {
     const defaultTranslation = this.translationUtils.getTranslationByLanguage(
       product.translations,
@@ -241,13 +541,26 @@ export class StoryblokService implements OnApplicationBootstrap {
       return undefined;
     }
 
+    // Find all variant stories for this product
+    const variantStoryIds = await this.findVariantStoriesForProduct(
+      product.id,
+      defaultLanguageCode,
+      productSlug,
+    );
+
+    const slug = this.translationUtils.getSlugByLanguage(
+      product.translations,
+      defaultLanguageCode,
+    );
+
     const result = {
       story: {
         name: defaultTranslation?.name,
-        slug: defaultTranslation?.slug,
+        slug: slug,
         content: {
-          component: "Product",
-          body: [],
+          component: COMPONENT_TYPE.product,
+          vendureId: product.id.toString(),
+          variants: variantStoryIds,
         },
       } as any,
       publish: 1,
@@ -283,16 +596,47 @@ export class StoryblokService implements OnApplicationBootstrap {
         product_variant: "Vendure Product Variant",
         collection: "Vendure Collection",
       };
+
+      // Base schema for all component types
+      const baseSchema = {
+        vendureId: {
+          type: "text",
+          pos: 0,
+          required: true,
+        },
+      };
+
+      // Add relationship fields based on component type
+      let relationshipSchema = {};
+      if (componentType === "product") {
+        relationshipSchema = {
+          variants: {
+            type: "options",
+            pos: 1,
+            source: "internal_stories",
+            restrict_content_types: [COMPONENT_TYPE.product_variant],
+            display_name: "Product Variants",
+          },
+        };
+      } else if (componentType === "product_variant") {
+        relationshipSchema = {
+          parentProduct: {
+            type: "option",
+            pos: 1,
+            source: "internal_stories",
+            restrict_content_types: [COMPONENT_TYPE.product],
+            display_name: "Parent Product",
+          },
+        };
+      }
+
       return {
         component: {
           name: COMPONENT_TYPE[componentType],
           display_name: displayNames[componentType],
           schema: {
-            vendureId: {
-              type: "text",
-              pos: 0,
-              required: true,
-            },
+            ...baseSchema,
+            ...relationshipSchema,
           },
           is_root: false,
           is_nestable: true,
@@ -391,6 +735,7 @@ export class StoryblokService implements OnApplicationBootstrap {
       const errorText = await response.text();
       const errorMessage = `Storyblok API error: ${response.status} ${response.statusText} - ${errorText}`;
       Logger.error(errorMessage);
+      throw new Error(errorMessage);
     }
 
     if (method === "DELETE") {
