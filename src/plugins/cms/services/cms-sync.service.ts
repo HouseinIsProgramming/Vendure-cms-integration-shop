@@ -359,26 +359,6 @@ export class CmsSyncService implements OnApplicationBootstrap {
         throw new Error(`Product with ID ${jobData.entityId} not found`);
       }
 
-      Logger.info(
-        `[${loggerCtx}] Product ${jobData.operationType}: ${JSON.stringify(
-          {
-            id: product.id,
-            operation: jobData.operationType,
-            timestamp: jobData.timestamp,
-            translations: product.translations,
-            defaultData: this.translationUtils.getTranslationByLanguage(
-              product.translations,
-              defaultLanguageCode,
-            ),
-            otherLanguages: product.translations.filter(
-              (t) => t.languageCode !== defaultLanguageCode,
-            ),
-          },
-          null,
-          2,
-        )}`,
-      );
-
       // Get product slug for variant lookups
       const productSlug = this.translationUtils.getSlugByLanguage(
         product.translations,
@@ -438,24 +418,6 @@ export class CmsSyncService implements OnApplicationBootstrap {
         ? `${productSlug}-variant-${variant.id}`
         : `variant-${variant.id}`;
 
-      Logger.info(
-        `[${loggerCtx}] Variant ${jobData.operationType}: ${JSON.stringify(
-          {
-            id: variant.id,
-            operation: jobData.operationType,
-            timestamp: jobData.timestamp,
-            translations: variant.translations,
-            generatedSlug: variantSlug,
-            defaultData: this.translationUtils.getTranslationByLanguage(
-              variant.translations,
-              defaultLanguageCode,
-            ),
-          },
-          null,
-          2,
-        )}`,
-      );
-
       await this.storyblockService.syncProductVariant({
         variant,
         defaultLanguageCode,
@@ -499,19 +461,6 @@ export class CmsSyncService implements OnApplicationBootstrap {
       if (!collection) {
         throw new Error(`Collection with ID ${jobData.entityId} not found`);
       }
-
-      Logger.info(
-        `[${loggerCtx}] Collection ${jobData.operationType}: ${JSON.stringify(
-          {
-            id: collection.id,
-            operation: jobData.operationType,
-            timestamp: jobData.timestamp,
-            translations: collection.translations,
-          },
-          null,
-          2,
-        )}`,
-      );
 
       const operationType = jobData.operationType;
       const defaultLanguageCode = await this.getDefaultLanguageCode();

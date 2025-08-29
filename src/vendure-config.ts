@@ -16,6 +16,7 @@ import { GraphiqlPlugin } from "@vendure/graphiql-plugin";
 import "dotenv/config";
 import path from "path";
 import { CmsPlugin } from "./plugins/cms/cms.plugin";
+import { DashboardPlugin } from "@vendure/dashboard/plugin";
 
 const IS_DEV = process.env.APP_ENV === "dev";
 const serverPort = +process.env.PORT || 3000;
@@ -75,6 +76,10 @@ export const config: VendureConfig = {
   // need to be updated. See the "Migrations" section in README.md.
   customFields: {},
   plugins: [
+    DashboardPlugin.init({
+      appDir: path.join(__dirname, "dist/dashboard"),
+      route: "dashboard",
+    }),
     GraphiqlPlugin.init(),
     AssetServerPlugin.init({
       route: "assets",
@@ -107,6 +112,7 @@ export const config: VendureConfig = {
     }),
     AdminUiPlugin.init({
       route: "admin",
+      compatibilityMode: true,
       port: serverPort + 2,
       adminUiConfig: {
         apiPort: serverPort,

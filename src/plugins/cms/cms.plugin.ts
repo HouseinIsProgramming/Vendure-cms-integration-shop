@@ -59,13 +59,7 @@ export class CmsPlugin implements OnModuleInit {
     this.productSyncQueue = await this.jobQueueService.createQueue({
       name: "cms-product-sync",
       process: async (job) => {
-        Logger.info(
-          `[${loggerCtx}] Processing product sync job: ${JSON.stringify(job.data)}`,
-        );
         const result = await this.cmsSyncService.syncProductToCms(job.data);
-        Logger.info(
-          `[${loggerCtx}] Product sync result: ${JSON.stringify(result)}`,
-        );
         return result;
       },
     });
@@ -74,13 +68,7 @@ export class CmsPlugin implements OnModuleInit {
     this.variantSyncQueue = await this.jobQueueService.createQueue({
       name: "cms-variant-sync",
       process: async (job) => {
-        Logger.info(
-          `[${loggerCtx}] Processing variant sync job: ${JSON.stringify(job.data)}`,
-        );
         const result = await this.cmsSyncService.syncVariantToCms(job.data);
-        Logger.info(
-          `[${loggerCtx}] Variant sync result: ${JSON.stringify(result)}`,
-        );
         return result;
       },
     });
@@ -89,13 +77,7 @@ export class CmsPlugin implements OnModuleInit {
     this.collectionSyncQueue = await this.jobQueueService.createQueue({
       name: "cms-collection-sync",
       process: async (job) => {
-        Logger.info(
-          `[${loggerCtx}] Processing collection sync job: ${JSON.stringify(job.data)}`,
-        );
         const result = await this.cmsSyncService.syncCollectionToCms(job.data);
-        Logger.info(
-          `[${loggerCtx}] Collection sync result: ${JSON.stringify(result)}`,
-        );
         return result;
       },
     });
@@ -106,17 +88,17 @@ export class CmsPlugin implements OnModuleInit {
         const syncData = this.extractSyncData(event);
 
         Logger.info(
-          `\n[${loggerCtx}] Product event detected: ${event.type} for product ${event.entity.id}`,
+          `[${loggerCtx}] Product event detected: ${event.type} for product ${event.entity.id}`,
         );
 
         await this.productSyncQueue.add(syncData);
 
         Logger.info(
-          `\n[${loggerCtx}] Product sync job queued for product ${event.entity.id}`,
+          `[${loggerCtx}] Product sync job queued for product ${event.entity.id}`,
         );
       } catch (error) {
         Logger.error(
-          `\n[${loggerCtx}] Failed to queue product sync job: ${error instanceof Error ? error.message : "Unknown error"}`,
+          `[${loggerCtx}] Failed to queue product sync job: ${error instanceof Error ? error.message : "Unknown error"}`,
           error instanceof Error ? error.stack : "",
         );
       }
@@ -127,7 +109,7 @@ export class CmsPlugin implements OnModuleInit {
       try {
         const variantIds = event.entity.map((v) => v.id).join(", ");
         Logger.info(
-          `\n[${loggerCtx}] ProductVariant event detected: ${event.type} for variants ${variantIds}`,
+          `[${loggerCtx}] ProductVariant event detected: ${event.type} for variants ${variantIds}`,
         );
 
         // Create a sync job for each variant
@@ -137,11 +119,11 @@ export class CmsPlugin implements OnModuleInit {
         }
 
         Logger.info(
-          `\n[${loggerCtx}] ProductVariant sync jobs queued for variants ${variantIds}`,
+          `[${loggerCtx}] ProductVariant sync jobs queued for variants ${variantIds}`,
         );
       } catch (error) {
         Logger.error(
-          `\n[${loggerCtx}] Failed to queue variant sync job: ${error instanceof Error ? error.message : "Unknown error"}`,
+          `[${loggerCtx}] Failed to queue variant sync job: ${error instanceof Error ? error.message : "Unknown error"}`,
           error instanceof Error ? error.stack : "",
         );
       }
@@ -153,24 +135,24 @@ export class CmsPlugin implements OnModuleInit {
         const syncData = this.extractCollectionSyncData(event);
 
         Logger.info(
-          `\n[${loggerCtx}] Collection event detected: ${event.type} for collection ${event.entity.id}`,
+          `[${loggerCtx}] Collection event detected: ${event.type} for collection ${event.entity.id}`,
         );
 
         await this.collectionSyncQueue.add(syncData);
 
         Logger.info(
-          `\n[${loggerCtx}] Collection sync job queued for collection ${event.entity.id}`,
+          `[${loggerCtx}] Collection sync job queued for collection ${event.entity.id}`,
         );
       } catch (error) {
         Logger.error(
-          `\n[${loggerCtx}] Failed to queue collection sync job: ${error instanceof Error ? error.message : "Unknown error"}`,
+          `[${loggerCtx}] Failed to queue collection sync job: ${error instanceof Error ? error.message : "Unknown error"}`,
           error instanceof Error ? error.stack : "",
         );
       }
     });
 
     Logger.info(
-      `\n[${loggerCtx}] CMS Plugin initialized with product, variant, and collection sync queues`,
+      `[${loggerCtx}] CMS Plugin initialized with product, variant, and collection sync queues`,
     );
   }
 

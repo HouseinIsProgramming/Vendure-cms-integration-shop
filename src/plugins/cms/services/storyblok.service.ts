@@ -868,7 +868,6 @@ export class StoryblokService implements OnApplicationBootstrap {
     if (!contentCheck.collection) {
       await createContentType("collection");
     }
-    Logger.info("initialized");
     this.isInitialized = true;
   }
 
