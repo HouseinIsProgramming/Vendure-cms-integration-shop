@@ -596,7 +596,12 @@ export class StoryblokService implements OnApplicationBootstrap {
       Logger.warn(
         `Story not found in Storyblok for slug: ${slug}. Creating new story instead.`,
       );
-      await this.createStoryFromCollection(collection, defaultLanguageCode, collectionSlug, variants);
+      await this.createStoryFromCollection(
+        collection,
+        defaultLanguageCode,
+        collectionSlug,
+        variants,
+      );
       return;
     }
 
@@ -690,7 +695,7 @@ export class StoryblokService implements OnApplicationBootstrap {
           collection.translations,
           defaultLanguageCode,
         );
-        
+
         if (slug) {
           const story = await this.findStoryBySlug(slug);
           if (story?.uuid) {
@@ -802,7 +807,7 @@ export class StoryblokService implements OnApplicationBootstrap {
             product.translations,
             defaultLanguageCode,
           );
-          
+
           if (productSlug) {
             const variantSlug = `${productSlug}-variant-${variant.id}`;
             const story = await this.findStoryBySlug(variantSlug);
@@ -875,7 +880,7 @@ export class StoryblokService implements OnApplicationBootstrap {
             type: "options",
             pos: 1,
             source: "internal_stories",
-            restrict_content_types: [COMPONENT_TYPE.product_variant],
+            filter_content_type: [COMPONENT_TYPE.product_variant],
             display_name: "Product Variants",
           },
         };
@@ -885,14 +890,14 @@ export class StoryblokService implements OnApplicationBootstrap {
             type: "option",
             pos: 1,
             source: "internal_stories",
-            restrict_content_types: [COMPONENT_TYPE.product],
+            filter_content_type: [COMPONENT_TYPE.product],
             display_name: "Parent Product",
           },
           collections: {
             type: "options",
             pos: 2,
             source: "internal_stories",
-            restrict_content_types: [COMPONENT_TYPE.collection],
+            filter_content_type: [COMPONENT_TYPE.collection],
             display_name: "Collections",
           },
         };
@@ -902,7 +907,7 @@ export class StoryblokService implements OnApplicationBootstrap {
             type: "options",
             pos: 1,
             source: "internal_stories",
-            restrict_content_types: [COMPONENT_TYPE.product_variant],
+            filter_content_type: [COMPONENT_TYPE.product_variant],
             display_name: "Product Variants",
           },
         };
