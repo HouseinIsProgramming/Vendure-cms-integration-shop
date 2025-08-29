@@ -31,7 +31,7 @@ export class StoryblokService implements OnApplicationBootstrap {
   ) {}
 
   async onApplicationBootstrap() {
-    this.ensureContentTypesExists();
+    this.ensureStoryContentTypesExists();
   }
 
   async syncProduct({
@@ -95,11 +95,13 @@ export class StoryblokService implements OnApplicationBootstrap {
     defaultLanguageCode,
     operationType,
     variantSlug,
+    collections,
   }: {
     variant: ProductVariant;
     defaultLanguageCode: LanguageCode;
     operationType: OperationType;
     variantSlug: string;
+    collections?: Collection[];
   }) {
     try {
       this.translationUtils.validateTranslations(
@@ -117,6 +119,7 @@ export class StoryblokService implements OnApplicationBootstrap {
             variant,
             defaultLanguageCode,
             variantSlug,
+            collections,
           );
           break;
         case "update":
@@ -124,6 +127,7 @@ export class StoryblokService implements OnApplicationBootstrap {
             variant,
             defaultLanguageCode,
             variantSlug,
+            collections,
           );
           break;
         case "delete":
@@ -155,11 +159,13 @@ export class StoryblokService implements OnApplicationBootstrap {
     defaultLanguageCode,
     operationType,
     collectionSlug,
+    variants,
   }: {
     collection: Collection;
     defaultLanguageCode: LanguageCode;
     operationType: OperationType;
     collectionSlug?: string | null;
+    variants?: ProductVariant[];
   }) {
     try {
       this.translationUtils.validateTranslations(
@@ -177,6 +183,7 @@ export class StoryblokService implements OnApplicationBootstrap {
             collection,
             defaultLanguageCode,
             collectionSlug,
+            variants,
           );
           break;
         case "update":
@@ -184,6 +191,7 @@ export class StoryblokService implements OnApplicationBootstrap {
             collection,
             defaultLanguageCode,
             collectionSlug,
+            variants,
           );
           break;
         case "delete":
@@ -439,11 +447,13 @@ export class StoryblokService implements OnApplicationBootstrap {
     variant: ProductVariant,
     defaultLanguageCode: LanguageCode,
     variantSlug: string,
+    collections?: Collection[],
   ): Promise<void> {
     const data = await this.transformVariantData(
       variant,
       defaultLanguageCode,
       variantSlug,
+      collections,
     );
     if (!data) {
       Logger.error(
@@ -467,6 +477,7 @@ export class StoryblokService implements OnApplicationBootstrap {
     variant: ProductVariant,
     defaultLanguageCode: LanguageCode,
     variantSlug: string,
+    collections?: Collection[],
   ): Promise<void> {
     const existingStory = await this.findStoryBySlug(variantSlug);
 
@@ -478,6 +489,7 @@ export class StoryblokService implements OnApplicationBootstrap {
         variant,
         defaultLanguageCode,
         variantSlug,
+        collections,
       );
       return;
     }
@@ -486,6 +498,7 @@ export class StoryblokService implements OnApplicationBootstrap {
       variant,
       defaultLanguageCode,
       variantSlug,
+      collections,
     );
     if (!data) {
       Logger.error(
@@ -534,11 +547,13 @@ export class StoryblokService implements OnApplicationBootstrap {
     collection: Collection,
     defaultLanguageCode: LanguageCode,
     collectionSlug?: string | null,
+    variants?: ProductVariant[],
   ): Promise<void> {
     const data = await this.transformCollectionData(
       collection,
       defaultLanguageCode,
       collectionSlug,
+      variants,
     );
     if (!data) {
       Logger.error(
@@ -562,6 +577,7 @@ export class StoryblokService implements OnApplicationBootstrap {
     collection: Collection,
     defaultLanguageCode: LanguageCode,
     collectionSlug?: string | null,
+    variants?: ProductVariant[],
   ): Promise<void> {
     const slug = this.translationUtils.getSlugByLanguage(
       collection.translations,
@@ -580,7 +596,7 @@ export class StoryblokService implements OnApplicationBootstrap {
       Logger.warn(
         `Story not found in Storyblok for slug: ${slug}. Creating new story instead.`,
       );
-      await this.createStoryFromCollection(collection, defaultLanguageCode);
+      await this.createStoryFromCollection(collection, defaultLanguageCode, collectionSlug, variants);
       return;
     }
 
@@ -588,6 +604,7 @@ export class StoryblokService implements OnApplicationBootstrap {
       collection,
       defaultLanguageCode,
       collectionSlug,
+      variants,
     );
     if (!data) {
       Logger.error(
@@ -645,6 +662,7 @@ export class StoryblokService implements OnApplicationBootstrap {
     variant: ProductVariant,
     defaultLanguageCode: LanguageCode,
     variantSlug: string,
+    collections?: Collection[],
   ) {
     const defaultTranslation = this.translationUtils.getTranslationByLanguage(
       variant.translations,
@@ -664,6 +682,24 @@ export class StoryblokService implements OnApplicationBootstrap {
       defaultLanguageCode,
     );
 
+    // Transform collections to story UUIDs
+    const collectionStoryUuids: string[] = [];
+    if (collections) {
+      for (const collection of collections) {
+        const slug = this.translationUtils.getSlugByLanguage(
+          collection.translations,
+          defaultLanguageCode,
+        );
+        
+        if (slug) {
+          const story = await this.findStoryBySlug(slug);
+          if (story?.uuid) {
+            collectionStoryUuids.push(story.uuid.toString());
+          }
+        }
+      }
+    }
+
     const result = {
       story: {
         name: defaultTranslation?.name,
@@ -672,6 +708,7 @@ export class StoryblokService implements OnApplicationBootstrap {
           component: COMPONENT_TYPE.product_variant,
           vendureId: variant.id.toString(),
           parentProduct: parentProductStoryUuid ? [parentProductStoryUuid] : [],
+          collections: collectionStoryUuids,
         },
       } as any,
       publish: 1,
@@ -729,6 +766,7 @@ export class StoryblokService implements OnApplicationBootstrap {
     collection: Collection,
     defaultLanguageCode: LanguageCode,
     collectionSlug?: string | null,
+    variants?: ProductVariant[],
   ) {
     const defaultTranslation = this.translationUtils.getTranslationByLanguage(
       collection.translations,
@@ -747,6 +785,35 @@ export class StoryblokService implements OnApplicationBootstrap {
       defaultLanguageCode,
     );
 
+    // Transform variants to story UUIDs
+    const variantStoryUuids: string[] = [];
+    if (variants) {
+      for (const variant of variants) {
+        // Get parent product to generate variant slug
+        const product = await this.connection.rawConnection
+          .getRepository(Product)
+          .findOne({
+            where: { id: variant.productId },
+            relations: ["translations"],
+          });
+
+        if (product) {
+          const productSlug = this.translationUtils.getSlugByLanguage(
+            product.translations,
+            defaultLanguageCode,
+          );
+          
+          if (productSlug) {
+            const variantSlug = `${productSlug}-variant-${variant.id}`;
+            const story = await this.findStoryBySlug(variantSlug);
+            if (story?.uuid) {
+              variantStoryUuids.push(story.uuid.toString());
+            }
+          }
+        }
+      }
+    }
+
     const result = {
       story: {
         name: defaultTranslation?.name,
@@ -754,6 +821,7 @@ export class StoryblokService implements OnApplicationBootstrap {
         content: {
           component: COMPONENT_TYPE.collection,
           vendureId: collection.id.toString(),
+          variants: variantStoryUuids,
         },
       } as any,
       publish: 1,
@@ -781,7 +849,7 @@ export class StoryblokService implements OnApplicationBootstrap {
     };
   }
 
-  private async ensureContentTypesExists() {
+  private async ensureStoryContentTypesExists() {
     const contentCheck = await this.checkContentTypes();
     const shapeData = (componentType: keyof typeof COMPONENT_TYPE) => {
       const displayNames = {
@@ -819,6 +887,23 @@ export class StoryblokService implements OnApplicationBootstrap {
             source: "internal_stories",
             restrict_content_types: [COMPONENT_TYPE.product],
             display_name: "Parent Product",
+          },
+          collections: {
+            type: "options",
+            pos: 2,
+            source: "internal_stories",
+            restrict_content_types: [COMPONENT_TYPE.collection],
+            display_name: "Collections",
+          },
+        };
+      } else if (componentType === "collection") {
+        relationshipSchema = {
+          variants: {
+            type: "options",
+            pos: 1,
+            source: "internal_stories",
+            restrict_content_types: [COMPONENT_TYPE.product_variant],
+            display_name: "Product Variants",
           },
         };
       }

@@ -4,6 +4,7 @@ import { Inject, Injectable, OnApplicationBootstrap } from "@nestjs/common";
 import {
   ChannelService,
   Collection,
+  CollectionService,
   ID,
   LanguageCode,
   Logger,
@@ -34,6 +35,7 @@ export class CmsSyncService implements OnApplicationBootstrap {
     @Inject(CMS_PLUGIN_OPTIONS) private options: PluginInitOptions,
     private readonly connection: TransactionalConnection,
     private readonly channelService: ChannelService,
+    private readonly collectionService: CollectionService,
     private readonly requestContextService: RequestContextService,
     private readonly storyblockService: StoryblokService,
     private processContext: ProcessContext,
@@ -50,6 +52,7 @@ export class CmsSyncService implements OnApplicationBootstrap {
       // Logger.info("CMS Sync Service initialized");
     }
   }
+
   ensureContentTypesExists() {
     throw new Error("Method not implemented.");
   }
@@ -57,6 +60,91 @@ export class CmsSyncService implements OnApplicationBootstrap {
   private async getDefaultLanguageCode(): Promise<LanguageCode> {
     const defaultChannel = await this.channelService.getDefaultChannel();
     return defaultChannel.defaultLanguageCode;
+  }
+
+  /**
+   * Finds all collections that contain a given variant
+   * @param ctx The request context
+   * @param variantId The ProductVariant ID
+   * @returns Array of Collection entities
+   */
+  async findCollectionsForVariant(
+    ctx: RequestContext,
+    variantId: string | number,
+  ): Promise<Collection[]> {
+    try {
+      const collections = await this.collectionService.findAll(ctx);
+      const collectionsWithVariant: Collection[] = [];
+
+      for (const collection of collections.items) {
+        const variantIds =
+          await this.collectionService.getCollectionProductVariantIds(
+            collection,
+            ctx,
+          );
+
+        const hasVariant = variantIds.includes(variantId as any);
+
+        if (hasVariant) {
+          collectionsWithVariant.push(collection);
+        }
+      }
+
+      return collectionsWithVariant;
+    } catch (error) {
+      Logger.error(
+        `Failed to find collections for variant ${variantId}`,
+        String(error),
+      );
+      return [];
+    }
+  }
+
+  /**
+   * Finds all variants that belong to a given collection
+   * @param ctx The request context
+   * @param collectionId The Collection ID
+   * @returns Array of ProductVariant entities
+   */
+  async findVariantsForCollection(
+    ctx: RequestContext,
+    collectionId: string | number,
+  ): Promise<ProductVariant[]> {
+    try {
+      // Fetch the collection entity first
+      const collection = await this.connection.rawConnection
+        .getRepository(Collection)
+        .findOne({
+          where: { id: collectionId as any },
+        });
+
+      if (!collection) {
+        return [];
+      }
+
+      const variantIds =
+        await this.collectionService.getCollectionProductVariantIds(
+          collection,
+          ctx,
+        );
+
+      // Fetch actual ProductVariant entities
+      const variants = await this.connection.rawConnection
+        .getRepository(ProductVariant)
+        .find({
+          where: { id: variantIds as any },
+          relations: ["translations", "product", "product.translations"],
+          order: { id: "ASC" },
+        });
+
+      return variants;
+    } catch (error) {
+      Logger.error(
+        `Failed to find variants for collection ${collectionId}`,
+        String(error),
+      );
+      return [];
+    }
   }
 
   private async syncAllEntitiesToCmsGeneric<T extends { id: any }>(
@@ -394,6 +482,13 @@ export class CmsSyncService implements OnApplicationBootstrap {
 
   async syncVariantToCms(jobData: SyncJobData): Promise<SyncResponse> {
     try {
+      // Create RequestContext for service calls
+      const ctx = await this.requestContextService.create({
+        apiType: "admin",
+        languageCode: await this.getDefaultLanguageCode(),
+        channelOrToken: await this.channelService.getDefaultChannel(),
+      });
+
       // Fetch fresh variant data from database with product relation
       const variant = await this.connection.rawConnection
         .getRepository(ProductVariant)
@@ -418,15 +513,16 @@ export class CmsSyncService implements OnApplicationBootstrap {
         ? `${productSlug}-variant-${variant.id}`
         : `variant-${variant.id}`;
 
+      // Find collections for this variant
+      const collections = await this.findCollectionsForVariant(ctx, variant.id);
+
       await this.storyblockService.syncProductVariant({
         variant,
         defaultLanguageCode,
         operationType,
         variantSlug,
+        collections,
       });
-
-      // Simulate API call delay
-      await new Promise((resolve) => setTimeout(resolve, 100));
 
       return {
         success: true,
@@ -450,6 +546,13 @@ export class CmsSyncService implements OnApplicationBootstrap {
 
   async syncCollectionToCms(jobData: SyncJobData): Promise<SyncResponse> {
     try {
+      // Create RequestContext for service calls
+      const ctx = await this.requestContextService.create({
+        apiType: "admin",
+        languageCode: await this.getDefaultLanguageCode(),
+        channelOrToken: await this.channelService.getDefaultChannel(),
+      });
+
       // Fetch fresh collection data from database
       const collection = await this.connection.rawConnection
         .getRepository(Collection)
@@ -471,11 +574,15 @@ export class CmsSyncService implements OnApplicationBootstrap {
         defaultLanguageCode,
       );
 
+      // Find variants for this collection
+      const variants = await this.findVariantsForCollection(ctx, collection.id);
+
       await this.storyblockService.syncCollection({
         collection,
         defaultLanguageCode,
         operationType,
         collectionSlug,
+        variants,
       });
 
       return {
