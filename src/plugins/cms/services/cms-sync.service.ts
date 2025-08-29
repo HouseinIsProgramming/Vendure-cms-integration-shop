@@ -269,6 +269,12 @@ export class CmsSyncService implements OnApplicationBootstrap {
     };
   }
 
+  async syncAllEntityTypes() {
+    await this.syncAllProductsToCms();
+    await this.syncAllProductVariantsToCms();
+    await this.syncAllCollectionsToCms();
+  }
+
   /**
    * Syncs all product variants in the database to the CMS with rate limiting and retry logic
    * @returns Summary of sync results
@@ -348,7 +354,6 @@ export class CmsSyncService implements OnApplicationBootstrap {
         });
 
       const operationType = jobData.operationType;
-
       const defaultLanguageCode = await this.getDefaultLanguageCode();
 
       if (!product) {
@@ -387,17 +392,6 @@ export class CmsSyncService implements OnApplicationBootstrap {
         operationType,
         productSlug,
       });
-
-      // Simulate API call delay
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      // TODO: Replace with actual CMS API call
-      // Example implementation:
-      // const response = await this.cmsApiClient.post('/products', {
-      //     id: product.id,
-      //     operation: jobData.operationType,
-      //     translations: product.translations
-      // });
 
       return {
         success: true,
@@ -520,8 +514,22 @@ export class CmsSyncService implements OnApplicationBootstrap {
         )}`,
       );
 
-      // Simulate API call delay
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      const operationType = jobData.operationType;
+      const defaultLanguageCode = await this.getDefaultLanguageCode();
+
+      // Get product slug for variant lookups
+      const productSlug = this.translationUtils.getSlugByLanguage(
+        collection.translations,
+        defaultLanguageCode,
+      );
+
+      await this.storyblockService.syncCollection({
+        // IMPLEMENT THIS
+        collection,
+        defaultLanguageCode,
+        operationType,
+        productSlug,
+      });
 
       // TODO: Replace with actual CMS API call
       // Example implementation:

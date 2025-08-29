@@ -21,6 +21,7 @@ import { CmsSyncService } from "./services/cms-sync.service";
 import { StoryblokService } from "./services/storyblok.service";
 import { CmsSyncAdminResolver } from "./api/cms-sync-admin.resolver";
 import { adminApiExtensions } from "./api/api-extensions";
+import { syncCmsTask } from "./config/sync-cms-task";
 
 @VendurePlugin({
   imports: [PluginCommonModule],
@@ -29,6 +30,11 @@ import { adminApiExtensions } from "./api/api-extensions";
     CmsSyncService,
     StoryblokService,
   ],
+  configuration: (config) => {
+    config.schedulerOptions.tasks.push(syncCmsTask);
+    return config;
+  },
+
   compatibility: "^3.0.0",
   dashboard: "./dashboard/index.tsx",
   adminApiExtensions: {
