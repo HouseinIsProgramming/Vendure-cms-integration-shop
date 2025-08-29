@@ -15,6 +15,7 @@ import {
   RequestContextService,
   TransactionalConnection,
 } from "@vendure/core";
+import { In } from "typeorm";
 import { CMS_PLUGIN_OPTIONS, loggerCtx } from "../constants";
 import { PluginInitOptions, SyncJobData, SyncResponse } from "../types";
 import { TranslationUtils } from "../utils/translation.utils";
@@ -83,7 +84,7 @@ export class CmsSyncService implements OnApplicationBootstrap {
             ctx,
           );
 
-        const hasVariant = variantIds.includes(variantId as any);
+        const hasVariant = variantIds.some(id => id.toString() === variantId.toString());
 
         if (hasVariant) {
           collectionsWithVariant.push(collection);
@@ -129,10 +130,14 @@ export class CmsSyncService implements OnApplicationBootstrap {
         );
 
       // Fetch actual ProductVariant entities
+      if (variantIds.length === 0) {
+        return [];
+      }
+      
       const variants = await this.connection.rawConnection
         .getRepository(ProductVariant)
         .find({
-          where: { id: variantIds as any },
+          where: { id: In(variantIds) },
           relations: ["translations", "product", "product.translations"],
           order: { id: "ASC" },
         });

@@ -23,6 +23,8 @@ export class StoryblokService implements OnApplicationBootstrap {
   private readonly componentsPath = "components";
   private isInitialized = false;
   private readonly translationUtils = new TranslationUtils();
+  private lastApiCallTime = 0;
+  private readonly rateLimitDelay = 200; // 200ms between calls = max 5 calls/second
 
   constructor(
     private connection: TransactionalConnection,
@@ -230,6 +232,38 @@ export class StoryblokService implements OnApplicationBootstrap {
     } catch (error) {
       Logger.error(`Failed to find story by slug: ${slug}`, String(error));
     }
+  }
+
+  /**
+   * Finds multiple Storyblok stories by slugs in a single API call
+   * @param slugs Array of slugs to search for
+   * @returns Map of slug to story object
+   */
+  private async findStoriesBySlugs(slugs: string[]): Promise<Map<string, any>> {
+    const storyMap = new Map<string, any>();
+    
+    if (slugs.length === 0) {
+      return storyMap;
+    }
+
+    try {
+      // Storyblok supports comma-separated slugs in the by_slugs parameter
+      const slugsParam = slugs.join(',');
+      const response = await this.makeStoryblokRequest({
+        method: "GET",
+        endpoint: `stories?by_slugs=${slugsParam}`,
+      });
+
+      if (response.stories) {
+        for (const story of response.stories) {
+          storyMap.set(story.slug, story);
+        }
+      }
+    } catch (error) {
+      Logger.error(`Failed to find stories by slugs: ${slugs.join(', ')}`, String(error));
+    }
+
+    return storyMap;
   }
 
   /**
@@ -971,6 +1005,18 @@ export class StoryblokService implements OnApplicationBootstrap {
       "Content-Type": "application/json",
     };
   }
+
+  private async enforceRateLimit(): Promise<void> {
+    const now = Date.now();
+    const timeSinceLastCall = now - this.lastApiCallTime;
+    
+    if (timeSinceLastCall < this.rateLimitDelay) {
+      const waitTime = this.rateLimitDelay - timeSinceLastCall;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    
+    this.lastApiCallTime = Date.now();
+  }
   private async makeStoryblokRequest({
     method,
     endpoint,
@@ -1013,6 +1059,9 @@ export class StoryblokService implements OnApplicationBootstrap {
       }
     }
 
+    // Enforce rate limiting before making the request
+    await this.enforceRateLimit();
+    
     Logger.debug(`Making Storyblok API request: ${method} ${url}`);
     const response = await fetch(url, config);
 
