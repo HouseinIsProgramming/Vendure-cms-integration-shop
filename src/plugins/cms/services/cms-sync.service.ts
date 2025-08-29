@@ -44,9 +44,9 @@ export class CmsSyncService implements OnApplicationBootstrap {
     if (this.processContext.isWorker) {
       // TODO: Uncomment to enable auto-sync on startup (not recommended for production)
       // await this.syncAllEntitiesToCmsGeneric(
-      //   "Product",
-      //   Product,
-      //   this.syncProductToCms.bind(this),
+      // "Product",
+      // Product,
+      // this.syncProductToCms.bind(this),
       // );
       // Logger.info("CMS Sync Service initialized");
     }
@@ -441,7 +441,9 @@ export class CmsSyncService implements OnApplicationBootstrap {
         variant.product.translations,
         defaultLanguageCode,
       );
-      const variantSlug = productSlug ? `${productSlug}-variant-${variant.id}` : `variant-${variant.id}`;
+      const variantSlug = productSlug
+        ? `${productSlug}-variant-${variant.id}`
+        : `variant-${variant.id}`;
 
       Logger.info(
         `\n[${loggerCtx}] Variant ${jobData.operationType}: ${JSON.stringify(

@@ -233,7 +233,7 @@ export class StoryblokService implements OnApplicationBootstrap {
    * @param defaultLanguageCode The default language code to use for slug lookup
    * @returns Storyblok story ID of the parent product or null
    */
-  private async findParentProductStory(
+  private async findParentProductStoryUuid(
     variant: ProductVariant,
     defaultLanguageCode: LanguageCode,
   ): Promise<string | null> {
@@ -256,7 +256,7 @@ export class StoryblokService implements OnApplicationBootstrap {
 
       if (slug) {
         const story = await this.findStoryBySlug(slug);
-        return story?.id?.toString() || null;
+        return story?.uuid?.toString() || null;
       }
 
       return null;
@@ -493,7 +493,7 @@ export class StoryblokService implements OnApplicationBootstrap {
     }
 
     // Find parent product story for this variant
-    const parentProductStoryId = await this.findParentProductStory(
+    const parentProductStoryUuid = await this.findParentProductStoryUuid(
       variant,
       defaultLanguageCode,
     );
@@ -505,7 +505,7 @@ export class StoryblokService implements OnApplicationBootstrap {
         content: {
           component: COMPONENT_TYPE.product_variant,
           vendureId: variant.id.toString(),
-          parentProduct: parentProductStoryId ? [parentProductStoryId] : [],
+          parentProduct: parentProductStoryUuid ? [parentProductStoryUuid] : [],
         },
       } as any,
       publish: 1,
