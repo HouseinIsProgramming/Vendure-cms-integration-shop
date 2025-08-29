@@ -19,8 +19,8 @@ import { CMS_PLUGIN_OPTIONS, loggerCtx } from "./constants";
 import { PluginInitOptions, SyncJobData } from "./types";
 import { CmsSyncService } from "./services/cms-sync.service";
 import { StoryblokService } from "./services/storyblok.service";
-import { CmsSyncAdminResolver } from './api/cms-sync-admin.resolver';
-import { adminApiExtensions } from './api/api-extensions';
+import { CmsSyncAdminResolver } from "./api/cms-sync-admin.resolver";
+import { adminApiExtensions } from "./api/api-extensions";
 
 @VendurePlugin({
   imports: [PluginCommonModule],
@@ -30,9 +30,10 @@ import { adminApiExtensions } from './api/api-extensions';
     StoryblokService,
   ],
   compatibility: "^3.0.0",
+  dashboard: "./dashboard/index.tsx",
   adminApiExtensions: {
     schema: adminApiExtensions,
-    resolvers: [CmsSyncAdminResolver]
+    resolvers: [CmsSyncAdminResolver],
   },
 })
 export class CmsPlugin implements OnModuleInit {
