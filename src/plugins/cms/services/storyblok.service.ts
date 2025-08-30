@@ -241,14 +241,14 @@ export class StoryblokService implements OnApplicationBootstrap {
    */
   private async findStoriesBySlugs(slugs: string[]): Promise<Map<string, any>> {
     const storyMap = new Map<string, any>();
-    
+
     if (slugs.length === 0) {
       return storyMap;
     }
 
     try {
       // Storyblok supports comma-separated slugs in the by_slugs parameter
-      const slugsParam = slugs.join(',');
+      const slugsParam = slugs.join(",");
       const response = await this.makeStoryblokRequest({
         method: "GET",
         endpoint: `stories?by_slugs=${slugsParam}`,
@@ -260,7 +260,10 @@ export class StoryblokService implements OnApplicationBootstrap {
         }
       }
     } catch (error) {
-      Logger.error(`Failed to find stories by slugs: ${slugs.join(', ')}`, String(error));
+      Logger.error(
+        `Failed to find stories by slugs: ${slugs.join(", ")}`,
+        String(error),
+      );
     }
 
     return storyMap;
@@ -309,12 +312,21 @@ export class StoryblokService implements OnApplicationBootstrap {
     }
 
     const variants = await this.findProductVariants(productId);
-    const storyIds: string[] = [];
 
-    for (const variant of variants) {
-      // Generate variant slug from product slug + variant ID
-      const variantSlug = `${productSlug}-variant-${variant.id}`;
-      const story = await this.findStoryBySlug(variantSlug);
+    // Collect all variant slugs for batch lookup
+    const variantSlugs = variants.map(
+      (variant) => `${productSlug}-variant-${variant.id}`,
+    );
+
+    if (variantSlugs.length === 0) {
+      return [];
+    }
+
+    // Batch lookup all variant stories at once
+    const storiesMap = await this.findStoriesBySlugs(variantSlugs);
+
+    const storyIds: string[] = [];
+    for (const [slug, story] of storiesMap) {
       if (story?.uuid) {
         storyIds.push(story.uuid.toString());
       }
@@ -739,7 +751,7 @@ export class StoryblokService implements OnApplicationBootstrap {
       // Batch lookup all collection stories at once
       if (collectionSlugs.length > 0) {
         const storiesMap = await this.findStoriesBySlugs(collectionSlugs);
-        
+
         // Extract UUIDs from found stories
         for (const [slug, story] of storiesMap) {
           if (story?.uuid) {
@@ -836,28 +848,32 @@ export class StoryblokService implements OnApplicationBootstrap {
 
     // Transform variants to story UUIDs
     const variantStoryUuids: string[] = [];
-    if (variants) {
-      for (const variant of variants) {
-        // Get parent product to generate variant slug
-        const product = await this.connection.rawConnection
-          .getRepository(Product)
-          .findOne({
-            where: { id: variant.productId },
-            relations: ["translations"],
-          });
+    if (variants && variants.length > 0) {
+      // First, collect all variant slugs we need to look up
+      const variantSlugs: string[] = [];
 
-        if (product) {
+      for (const variant of variants) {
+        if (variant.product && variant.product.translations) {
           const productSlug = this.translationUtils.getSlugByLanguage(
-            product.translations,
+            variant.product.translations,
             defaultLanguageCode,
           );
 
           if (productSlug) {
             const variantSlug = `${productSlug}-variant-${variant.id}`;
-            const story = await this.findStoryBySlug(variantSlug);
-            if (story?.uuid) {
-              variantStoryUuids.push(story.uuid.toString());
-            }
+            variantSlugs.push(variantSlug);
+          }
+        }
+      }
+
+      // Batch lookup all variant stories at once
+      if (variantSlugs.length > 0) {
+        const storiesMap = await this.findStoriesBySlugs(variantSlugs);
+
+        // Extract UUIDs from found stories
+        for (const [slug, story] of storiesMap) {
+          if (story?.uuid) {
+            variantStoryUuids.push(story.uuid.toString());
           }
         }
       }
@@ -898,7 +914,7 @@ export class StoryblokService implements OnApplicationBootstrap {
     };
   }
 
-  private async ensureStoryContentTypesExists() {
+  async ensureStoryContentTypesExists() {
     const contentCheck = await this.checkContentTypes();
     const shapeData = (componentType: keyof typeof COMPONENT_TYPE) => {
       const displayNames = {
@@ -1019,12 +1035,12 @@ export class StoryblokService implements OnApplicationBootstrap {
   private async enforceRateLimit(): Promise<void> {
     const now = Date.now();
     const timeSinceLastCall = now - this.lastApiCallTime;
-    
+
     if (timeSinceLastCall < this.rateLimitDelay) {
       const waitTime = this.rateLimitDelay - timeSinceLastCall;
-      await new Promise(resolve => setTimeout(resolve, waitTime));
+      await new Promise((resolve) => setTimeout(resolve, waitTime));
     }
-    
+
     this.lastApiCallTime = Date.now();
   }
   private async makeStoryblokRequest({
@@ -1071,7 +1087,7 @@ export class StoryblokService implements OnApplicationBootstrap {
 
     // Enforce rate limiting before making the request
     await this.enforceRateLimit();
-    
+
     Logger.debug(`Making Storyblok API request: ${method} ${url}`);
     const response = await fetch(url, config);
 

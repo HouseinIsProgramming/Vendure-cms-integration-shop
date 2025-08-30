@@ -51,11 +51,12 @@ export class CmsSyncService implements OnApplicationBootstrap {
       // this.syncProductToCms.bind(this),
       // );
       // Logger.info("CMS Sync Service initialized");
+      this.ensureContentTypesExists();
     }
   }
 
   ensureContentTypesExists() {
-    throw new Error("Method not implemented.");
+    this.storyblockService.ensureStoryContentTypesExists();
   }
 
   private async getDefaultLanguageCode(): Promise<LanguageCode> {
@@ -84,7 +85,9 @@ export class CmsSyncService implements OnApplicationBootstrap {
             ctx,
           );
 
-        const hasVariant = variantIds.some(id => id.toString() === variantId.toString());
+        const hasVariant = variantIds.some(
+          (id) => id.toString() === variantId.toString(),
+        );
 
         if (hasVariant) {
           collectionsWithVariant.push(collection);
@@ -133,7 +136,7 @@ export class CmsSyncService implements OnApplicationBootstrap {
       if (variantIds.length === 0) {
         return [];
       }
-      
+
       const variants = await this.connection.rawConnection
         .getRepository(ProductVariant)
         .find({
@@ -221,7 +224,6 @@ export class CmsSyncService implements OnApplicationBootstrap {
       }));
 
       let processedCount = 0;
-      const rateLimitDelay = 1000 / 5; // 5 calls per second
 
       // Process jobs with rate limiting and retries
       while (jobQueue.length > 0) {
@@ -233,8 +235,8 @@ export class CmsSyncService implements OnApplicationBootstrap {
         );
 
         try {
-          // Rate limiting: Wait before making the API call
-          await new Promise((resolve) => setTimeout(resolve, rateLimitDelay));
+          // Note: Rate limiting is handled at the StoryblokService level
+          // No need for additional delays here as it creates double rate limiting
 
           await syncMethod({
             entityType,

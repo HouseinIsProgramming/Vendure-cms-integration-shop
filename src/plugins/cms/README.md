@@ -20,15 +20,14 @@ npm run dev:server
 
 ## Features
 
-- ✅ Real-time product, variant, and collection synchronization
-- ✅ Event-driven architecture with job queue processing
-- ✅ TypeScript best practices (no `any` types)
-- ✅ Environment-based configuration
-- ✅ Comprehensive error handling and retry mechanisms
-- ✅ Production-ready architecture with rate limiting
-- ✅ Extensible for multiple CMS platforms
-- ✅ Admin API for manual sync operations
-- ✅ Scheduled sync tasks for data consistency
+- Real-time product, variant, and collection synchronization
+- Event-driven architecture with job queue processing
+- Environment-based configuration
+- Comprehensive error handling and retry mechanisms
+- Rate limiting
+- Extensible for multiple CMS platforms
+- Admin API for manual sync operations
+- Scheduled sync tasks for data consistency
 
 ## Prerequisites
 
@@ -92,11 +91,11 @@ import TabItem from '@theme/TabItem';
 Configure your Vendure application to use the CMS Integration Plugin by modifying your `vendure-config.ts`:
 
 ```ts title="src/vendure-config.ts"
-import { VendureConfig } from '@vendure/core';
+import { VendureConfig } from "@vendure/core";
 // highlight-start
-import { CmsPlugin } from './plugins/cms/cms.plugin';
+import { CmsPlugin } from "./plugins/cms/cms.plugin";
 // highlight-end
-import 'dotenv/config';
+import "dotenv/config";
 
 export const config: VendureConfig = {
   // ... other configuration options
@@ -107,10 +106,10 @@ export const config: VendureConfig = {
       cmsApiUrl: process.env.CMS_API_URL,
       cmsApiKey: process.env.CMS_API_KEY,
       storyblokSpaceId: process.env.STORYBLOK_SPACE_ID,
-      retryAttempts: parseInt(process.env.RETRY_ATTEMPTS || '3'),
-      retryDelay: parseInt(process.env.RETRY_DELAY || '5000'),
-      enableScheduledSync: process.env.ENABLE_SCHEDULED_SYNC === 'true',
-      scheduledSyncCron: process.env.SCHEDULED_SYNC_CRON || '0 */6 * * *',
+      retryAttempts: parseInt(process.env.RETRY_ATTEMPTS || "3"),
+      retryDelay: parseInt(process.env.RETRY_DELAY || "5000"),
+      enableScheduledSync: process.env.ENABLE_SCHEDULED_SYNC === "true",
+      scheduledSyncCron: process.env.SCHEDULED_SYNC_CRON || "0 */6 * * *",
     }),
     // highlight-end
 
@@ -159,8 +158,8 @@ const product = await this.productService.create(ctx, {
   translations: [
     {
       languageCode: LanguageCode.en,
-      name: 'Wireless Headphones',
-      description: 'Premium wireless headphones with noise cancellation',
+      name: "Wireless Headphones",
+      description: "Premium wireless headphones with noise cancellation",
     },
   ],
 });
@@ -194,9 +193,9 @@ const result = await this.cmsSyncService.syncAllCollectionsToCms();
 
 // Sync specific entity by ID
 const syncResult = await this.cmsSyncService.syncProductToCms({
-  entityType: 'Product',
+  entityType: "Product",
   entityId: productId,
-  operationType: 'create',
+  operationType: "create",
   timestamp: new Date().toISOString(),
   retryCount: 0,
 });
@@ -347,8 +346,9 @@ LOG_LEVEL=debug
 ```
 
 Monitor job queue status through Vendure Admin UI:
+
 - Navigate to "System" → "Job Queues"
-- Monitor cms-*-sync queue status
+- Monitor cms-\*-sync queue status
 - Review failed job details and error messages
 
 ## Conclusion
