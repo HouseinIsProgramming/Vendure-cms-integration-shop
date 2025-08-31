@@ -1216,30 +1216,65 @@ export class ContentfulService implements OnApplicationBootstrap {
       };
     };
 
-    const createContentType = async (
+    const createOrUpdateContentType = async (
       contentType: keyof typeof CONTENT_TYPE_ID,
     ) => {
       const data = shapeContentTypeData(contentType);
+      const contentTypeId = CONTENT_TYPE_ID[contentType];
 
-      Logger.info(`Creating content type ${CONTENT_TYPE_ID[contentType]}`);
-      const response = await this.makeContentfulRequest({
-        method: "PUT",
-        endpoint: `${this.contentTypesPath}/${CONTENT_TYPE_ID[contentType]}`,
-        data: data,
-        skipInitializationCheck: true,
-      });
+      try {
+        // First, try to get the existing content type
+        const existingContentType = await this.makeContentfulRequest({
+          method: "GET",
+          endpoint: `${this.contentTypesPath}/${contentTypeId}`,
+          skipInitializationCheck: true,
+        });
 
+        Logger.info(`Updating existing content type ${contentTypeId}`);
+        const response = await this.makeContentfulRequest({
+          method: "PUT",
+          endpoint: `${this.contentTypesPath}/${contentTypeId}`,
+          data: data,
+          headers: {
+            "X-Contentful-Version": existingContentType.sys.version.toString(),
+          },
+          skipInitializationCheck: true,
+        });
+
+        return response;
+      } catch (error) {
+        // If content type doesn't exist (404), create it
+        Logger.info(`Creating new content type ${contentTypeId}`);
+        const response = await this.makeContentfulRequest({
+          method: "PUT",
+          endpoint: `${this.contentTypesPath}/${contentTypeId}`,
+          data: data,
+          skipInitializationCheck: true,
+        });
+
+        return response;
+      }
+    };
+
+    const handleContentTypeResponse = async (response: any) => {
       if (response.sys?.id) {
         Logger.info(
           `Created ${response.name} content type with ID ${response.sys.id}`,
         );
         
-        // Activate the content type
+        // Fetch the latest version before publishing to avoid version mismatch
+        const latestContentType = await this.makeContentfulRequest({
+          method: "GET",
+          endpoint: `${this.contentTypesPath}/${response.sys.id}`,
+          skipInitializationCheck: true,
+        });
+        
+        // Activate the content type with the latest version
         await this.makeContentfulRequest({
           method: "PUT",
           endpoint: `${this.contentTypesPath}/${response.sys.id}/published`,
           headers: {
-            "X-Contentful-Version": response.sys.version.toString(),
+            "X-Contentful-Version": latestContentType.sys.version.toString(),
           },
           skipInitializationCheck: true,
         });
@@ -1249,15 +1284,18 @@ export class ContentfulService implements OnApplicationBootstrap {
     };
 
     if (!contentCheck.product) {
-      await createContentType("product");
+      const response = await createOrUpdateContentType("product");
+      await handleContentTypeResponse(response);
     }
 
     if (!contentCheck.variant) {
-      await createContentType("product_variant");
+      const response = await createOrUpdateContentType("product_variant");
+      await handleContentTypeResponse(response);
     }
 
     if (!contentCheck.collection) {
-      await createContentType("collection");
+      const response = await createOrUpdateContentType("collection");
+      await handleContentTypeResponse(response);
     }
     
     this.isInitialized = true;
