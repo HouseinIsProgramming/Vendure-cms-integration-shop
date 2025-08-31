@@ -19,7 +19,8 @@ import { In } from "typeorm";
 import { CMS_PLUGIN_OPTIONS, loggerCtx } from "../constants";
 import { PluginInitOptions, SyncJobData, SyncResponse } from "../types";
 import { TranslationUtils } from "../utils/translation.utils";
-import { StoryblokService } from "./storyblok.service";
+// import { StoryblokService } from "./storyblok.service";
+import { ContentfulService } from "./contentful.service";
 
 @Injectable()
 export class CmsSyncService implements OnApplicationBootstrap {
@@ -38,7 +39,8 @@ export class CmsSyncService implements OnApplicationBootstrap {
     private readonly channelService: ChannelService,
     private readonly collectionService: CollectionService,
     private readonly requestContextService: RequestContextService,
-    private readonly storyblockService: StoryblokService,
+    // private readonly storyblockService: StoryblokService,
+    private readonly contentfulService: ContentfulService,
     private processContext: ProcessContext,
   ) {}
 
@@ -56,7 +58,12 @@ export class CmsSyncService implements OnApplicationBootstrap {
   }
 
   ensureContentTypesExists() {
-    this.storyblockService.ensureStoryContentTypesExists();
+    // if (this.options.storyblokSpaceId) {
+    //   this.storyblockService.ensureStoryContentTypesExists();
+    // }
+    if (this.options.contentfulSpaceId) {
+      this.contentfulService.ensureContentfulContentTypesExists();
+    }
   }
 
   private async getDefaultLanguageCode(): Promise<LanguageCode> {
@@ -460,12 +467,25 @@ export class CmsSyncService implements OnApplicationBootstrap {
         defaultLanguageCode,
       );
 
-      await this.storyblockService.syncProduct({
-        product,
-        defaultLanguageCode,
-        operationType,
-        productSlug,
-      });
+      // Sync to Storyblok if configured (currently disabled)
+      // if (this.options.storyblokSpaceId) {
+      //   await this.storyblockService.syncProduct({
+      //     product,
+      //     defaultLanguageCode,
+      //     operationType,
+      //     productSlug,
+      //   });
+      // }
+
+      // Sync to Contentful if configured
+      if (this.options.contentfulSpaceId) {
+        await this.contentfulService.syncProduct({
+          product,
+          defaultLanguageCode,
+          operationType,
+          productSlug,
+        });
+      }
 
       return {
         success: true,
@@ -523,13 +543,27 @@ export class CmsSyncService implements OnApplicationBootstrap {
       // Find collections for this variant
       const collections = await this.findCollectionsForVariant(ctx, variant.id);
 
-      await this.storyblockService.syncProductVariant({
-        variant,
-        defaultLanguageCode,
-        operationType,
-        variantSlug,
-        collections,
-      });
+      // Sync to Storyblok if configured (currently disabled)
+      // if (this.options.storyblokSpaceId) {
+      //   await this.storyblockService.syncProductVariant({
+      //     variant,
+      //     defaultLanguageCode,
+      //     operationType,
+      //     variantSlug,
+      //     collections,
+      //   });
+      // }
+
+      // Sync to Contentful if configured
+      if (this.options.contentfulSpaceId) {
+        await this.contentfulService.syncProductVariant({
+          variant,
+          defaultLanguageCode,
+          operationType,
+          variantSlug,
+          collections,
+        });
+      }
 
       return {
         success: true,
@@ -584,13 +618,27 @@ export class CmsSyncService implements OnApplicationBootstrap {
       // Find variants for this collection
       const variants = await this.findVariantsForCollection(ctx, collection.id);
 
-      await this.storyblockService.syncCollection({
-        collection,
-        defaultLanguageCode,
-        operationType,
-        collectionSlug,
-        variants,
-      });
+      // Sync to Storyblok if configured (currently disabled)
+      // if (this.options.storyblokSpaceId) {
+      //   await this.storyblockService.syncCollection({
+      //     collection,
+      //     defaultLanguageCode,
+      //     operationType,
+      //     collectionSlug,
+      //     variants,
+      //   });
+      // }
+
+      // Sync to Contentful if configured
+      if (this.options.contentfulSpaceId) {
+        await this.contentfulService.syncCollection({
+          collection,
+          defaultLanguageCode,
+          operationType,
+          collectionSlug,
+          variants,
+        });
+      }
 
       return {
         success: true,

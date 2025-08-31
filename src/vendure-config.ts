@@ -119,8 +119,9 @@ export const config: VendureConfig = {
       },
     }),
     CmsPlugin.init({
-      cmsApiKey: process.env.STORYBLOK_API_KEY,
-      storyblokSpaceId: process.env.STORYBLOK_SPACE_ID,
+      cmsApiKey: process.env.CONTENTFUL_API_KEY,
+      // storyblokSpaceId: process.env.STORYBLOK_SPACE_ID,
+      contentfulSpaceId: process.env.CONTENTFUL_SPACE_ID,
     }),
   ],
 };

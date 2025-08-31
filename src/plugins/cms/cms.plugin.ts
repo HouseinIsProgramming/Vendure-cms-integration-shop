@@ -18,7 +18,8 @@ import { OnModuleInit } from "@nestjs/common";
 import { CMS_PLUGIN_OPTIONS, loggerCtx } from "./constants";
 import { PluginInitOptions, SyncJobData } from "./types";
 import { CmsSyncService } from "./services/cms-sync.service";
-import { StoryblokService } from "./services/storyblok.service";
+// import { StoryblokService } from "./services/storyblok.service";
+import { ContentfulService } from "./services/contentful.service";
 import { CmsSyncAdminResolver } from "./api/cms-sync-admin.resolver";
 import { adminApiExtensions } from "./api/api-extensions";
 import { syncCmsTask } from "./config/sync-cms-task";
@@ -28,7 +29,8 @@ import { syncCmsTask } from "./config/sync-cms-task";
   providers: [
     { provide: CMS_PLUGIN_OPTIONS, useFactory: () => CmsPlugin.options },
     CmsSyncService,
-    StoryblokService,
+    // StoryblokService,
+    ContentfulService,
   ],
   configuration: (config) => {
     config.schedulerOptions.tasks.push(syncCmsTask);

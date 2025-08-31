@@ -10,6 +10,7 @@ export interface PluginInitOptions {
   cmsApiKey?: string;
   storyblokSpaceId?: string;
   storyID?: string;
+  contentfulSpaceId?: string;
   retryAttempts?: number;
   retryDelay?: number;
   enableScheduledSync?: boolean;
