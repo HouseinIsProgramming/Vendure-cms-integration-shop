@@ -19,7 +19,7 @@ import { In } from "typeorm";
 import { CMS_PLUGIN_OPTIONS, loggerCtx } from "../constants";
 import { PluginInitOptions, SyncJobData, SyncResponse } from "../types";
 import { TranslationUtils } from "../utils/translation.utils";
-import { StoryblokService } from "./storyblok.service";
+import { SanityService } from "./sanity.service";
 
 @Injectable()
 export class CmsSyncService implements OnApplicationBootstrap {
@@ -38,7 +38,7 @@ export class CmsSyncService implements OnApplicationBootstrap {
     private readonly channelService: ChannelService,
     private readonly collectionService: CollectionService,
     private readonly requestContextService: RequestContextService,
-    private readonly storyblockService: StoryblokService,
+    private readonly sanityService: SanityService,
     private processContext: ProcessContext,
   ) {}
 
@@ -56,7 +56,7 @@ export class CmsSyncService implements OnApplicationBootstrap {
   }
 
   ensureContentTypesExists() {
-    this.storyblockService.ensureStoryContentTypesExists();
+    // Content types are defined in the Sanity schema - no need to create them programmatically
   }
 
   private async getDefaultLanguageCode(): Promise<LanguageCode> {
@@ -460,7 +460,7 @@ export class CmsSyncService implements OnApplicationBootstrap {
         defaultLanguageCode,
       );
 
-      await this.storyblockService.syncProduct({
+      await this.sanityService.syncProduct({
         product,
         defaultLanguageCode,
         operationType,
@@ -523,7 +523,7 @@ export class CmsSyncService implements OnApplicationBootstrap {
       // Find collections for this variant
       const collections = await this.findCollectionsForVariant(ctx, variant.id);
 
-      await this.storyblockService.syncProductVariant({
+      await this.sanityService.syncProductVariant({
         variant,
         defaultLanguageCode,
         operationType,
@@ -584,7 +584,7 @@ export class CmsSyncService implements OnApplicationBootstrap {
       // Find variants for this collection
       const variants = await this.findVariantsForCollection(ctx, collection.id);
 
-      await this.storyblockService.syncCollection({
+      await this.sanityService.syncCollection({
         collection,
         defaultLanguageCode,
         operationType,
