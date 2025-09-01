@@ -10,6 +10,10 @@ export interface PluginInitOptions {
   cmsApiKey?: string;
   storyblokSpaceId?: string;
   storyID?: string;
+  sanityApiKey?: string;
+  sanityProjectId?: string;
+  sanityDataset?: string;
+  sanityOrigin?: string;
   retryAttempts?: number;
   retryDelay?: number;
   enableScheduledSync?: boolean;
