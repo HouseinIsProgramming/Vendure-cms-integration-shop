@@ -44,14 +44,10 @@ export class CmsSyncService implements OnApplicationBootstrap {
 
   async onApplicationBootstrap() {
     if (this.processContext.isWorker) {
-      // TODO: Uncomment to enable auto-sync on startup (not recommended for production)
-      // await this.syncAllEntitiesToCmsGeneric(
-      // "Product",
-      // Product,
-      // this.syncProductToCms.bind(this),
-      // );
-      // Logger.info("CMS Sync Service initialized");
-      this.ensureContentTypesExists();
+      // Enable parallel bulk sync on startup
+      // this.syncAllEntityTypes();
+      Logger.info("CMS Sync Service initialized");
+      // this.ensureContentTypesExists();
     }
   }
 
@@ -225,78 +221,93 @@ export class CmsSyncService implements OnApplicationBootstrap {
 
       let processedCount = 0;
 
-      // Process jobs with rate limiting and retries
+      // Process jobs in parallel batches
+      const PARALLEL_BATCH_SIZE = 10; // Process 5 entities at once
+
+      Logger.info(
+        `[${loggerCtx}] Starting parallel bulk sync with batch size ${PARALLEL_BATCH_SIZE}`,
+      );
+
       while (jobQueue.length > 0) {
-        const currentJob = jobQueue.shift()!;
-        currentJob.attempts++;
+        // Take a batch of jobs
+        const currentBatch = jobQueue.splice(0, PARALLEL_BATCH_SIZE);
 
         Logger.info(
-          `[${loggerCtx}] Processing ${entityType.toLowerCase()} ${currentJob.entity.id} (attempt ${currentJob.attempts}/${currentJob.maxAttempts}) - ${processedCount + 1}/${totalEntities} total`,
+          `[${loggerCtx}] Processing batch of ${currentBatch.length} ${entityType.toLowerCase()}s in parallel`,
         );
 
-        try {
-          // Note: Rate limiting is handled at the StoryblokService level
-          // No need for additional delays here as it creates double rate limiting
+        // Process batch in parallel
+        const batchResults = await Promise.allSettled(
+          currentBatch.map(async (job) => {
+            job.attempts++;
 
-          await syncMethod({
-            entityType,
-            entityId: currentJob.entity.id,
-            operationType: "update",
-            timestamp: new Date().toISOString(),
-            retryCount: 0,
-          });
-
-          successCount++;
-          processedCount++;
-          Logger.debug(
-            `[${loggerCtx}] Successfully synced ${entityType.toLowerCase()} ${currentJob.entity.id} after ${currentJob.attempts} attempts`,
-          );
-        } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : "Unknown error";
-          const errorStack = error instanceof Error ? error.stack : "";
-          currentJob.lastError = errorMessage;
-
-          Logger.error(
-            `[${loggerCtx}] Attempt ${currentJob.attempts} failed for ${entityType.toLowerCase()} ${currentJob.entity.id}: ${errorMessage}`,
-            errorStack,
-          );
-
-          // Check if we should retry
-          if (currentJob.attempts < currentJob.maxAttempts) {
-            const backoffDelay = Math.min(
-              1000 * Math.pow(2, currentJob.attempts - 1),
-              10000,
+            Logger.debug(
+              `[${loggerCtx}] Processing ${entityType.toLowerCase()} ${job.entity.id} (attempt ${job.attempts}/${job.maxAttempts})`,
             );
 
-            Logger.info(
-              `[${loggerCtx}] Requeuing ${entityType.toLowerCase()} ${currentJob.entity.id} for retry in ${backoffDelay}ms (attempt ${currentJob.attempts + 1}/${currentJob.maxAttempts})`,
-            );
+            try {
+              await syncMethod({
+                entityType,
+                entityId: job.entity.id,
+                operationType: "update",
+                timestamp: new Date().toISOString(),
+                retryCount: 0,
+              });
 
-            setTimeout(() => {
-              jobQueue.push(currentJob);
-            }, backoffDelay);
-          } else {
-            // Max attempts reached
-            errorCount++;
-            processedCount++;
-            finalErrors.push({
-              entityId: currentJob.entity.id,
-              error: `Failed after ${currentJob.maxAttempts} attempts. Last error: ${errorMessage}`,
-              attempts: currentJob.attempts,
-            });
-            Logger.error(
-              `[${loggerCtx}] ${entityType} ${currentJob.entity.id} failed permanently after ${currentJob.maxAttempts} attempts`,
-            );
+              return { job, success: true };
+            } catch (error) {
+              const errorMessage =
+                error instanceof Error ? error.message : "Unknown error";
+              job.lastError = errorMessage;
+
+              Logger.error(
+                `[${loggerCtx}] Attempt ${job.attempts} failed for ${entityType.toLowerCase()} ${job.entity.id}: ${errorMessage}`,
+              );
+
+              return { job, success: false, error: errorMessage };
+            }
+          }),
+        );
+
+        // Process results
+        for (const result of batchResults) {
+          if (result.status === "fulfilled") {
+            const { job, success, error } = result.value;
+
+            if (success) {
+              successCount++;
+              processedCount++;
+              Logger.debug(
+                `[${loggerCtx}] Successfully synced ${entityType.toLowerCase()} ${job.entity.id}`,
+              );
+            } else {
+              // Retry logic
+              if (job.attempts < job.maxAttempts) {
+                Logger.info(
+                  `[${loggerCtx}] Requeuing ${entityType.toLowerCase()} ${job.entity.id} for retry (attempt ${job.attempts + 1}/${job.maxAttempts})`,
+                );
+                jobQueue.push(job);
+              } else {
+                // Max attempts reached
+                errorCount++;
+                processedCount++;
+                finalErrors.push({
+                  entityId: job.entity.id,
+                  error: `Failed after ${job.maxAttempts} attempts. Last error: ${job.lastError}`,
+                  attempts: job.attempts,
+                });
+                Logger.error(
+                  `[${loggerCtx}] ${entityType} ${job.entity.id} failed permanently after ${job.maxAttempts} attempts`,
+                );
+              }
+            }
           }
         }
 
-        // Progress logging every 10 processed items
-        if (processedCount % 10 === 0) {
-          Logger.info(
-            `[${loggerCtx}] Progress: ${processedCount}/${totalEntities} processed, ${successCount} successful, ${errorCount} failed, ${jobQueue.length} in queue`,
-          );
-        }
+        // Progress logging
+        Logger.info(
+          `[${loggerCtx}] Progress: ${processedCount}/${totalEntities} processed, ${successCount} successful, ${errorCount} failed, ${jobQueue.length} remaining`,
+        );
       }
 
       const duration = Date.now() - startTime;

@@ -21,8 +21,8 @@ const DOCUMENT_TYPE = {
 @Injectable()
 export class SanityService implements OnApplicationBootstrap {
   private readonly translationUtils = new TranslationUtils();
-  private lastApiCallTime = 0;
-  private readonly rateLimitDelay = 200;
+  private readonly rateLimitDelay = 20;
+  private requestQueue: Promise<void> = Promise.resolve();
 
   private get sanityBaseUrl(): string {
     return `https://${this.options.sanityProjectId}.api.sanity.io/v2025-09-01`;
@@ -55,9 +55,7 @@ export class SanityService implements OnApplicationBootstrap {
         defaultLanguageCode,
       );
 
-      Logger.info(
-        `Syncing product ${product.id} (${operationType}) to Sanity`,
-      );
+      Logger.info(`Syncing product ${product.id} (${operationType}) to Sanity`);
 
       switch (operationType) {
         case "create":
@@ -199,7 +197,10 @@ export class SanityService implements OnApplicationBootstrap {
           );
           break;
         case "delete":
-          await this.deleteDocumentFromCollection(collection, defaultLanguageCode);
+          await this.deleteDocumentFromCollection(
+            collection,
+            defaultLanguageCode,
+          );
           break;
         default:
           Logger.error(`Unknown operation type: ${operationType}`);
@@ -218,22 +219,31 @@ export class SanityService implements OnApplicationBootstrap {
     }
   }
 
-  private async findDocumentByVendureId(vendureId: string | number, type: string): Promise<any> {
+  private async findDocumentByVendureId(
+    vendureId: string | number,
+    type: string,
+  ): Promise<any> {
     try {
       const query = `*[_type == "${type}" && vendureId == ${vendureId}][0]`;
       const response = await this.makeSanityRequest({
         method: "GET",
-        endpoint: `data/query/${this.options.sanityDataset || 'production'}?query=${encodeURIComponent(query)}`,
+        endpoint: `data/query/${this.options.sanityDataset || "production"}?query=${encodeURIComponent(query)}`,
       });
 
       return response.result;
     } catch (error) {
-      Logger.error(`Failed to find document by vendure ID: ${vendureId}`, String(error));
+      Logger.error(
+        `Failed to find document by vendure ID: ${vendureId}`,
+        String(error),
+      );
       return null;
     }
   }
 
-  private async findDocumentsByVendureIds(vendureIds: (string | number)[], type: string): Promise<Map<string, any>> {
+  private async findDocumentsByVendureIds(
+    vendureIds: (string | number)[],
+    type: string,
+  ): Promise<Map<string, any>> {
     const documentMap = new Map<string, any>();
 
     if (vendureIds.length === 0) {
@@ -241,11 +251,13 @@ export class SanityService implements OnApplicationBootstrap {
     }
 
     try {
-      const idsFilter = vendureIds.map(id => `vendureId == ${id}`).join(" || ");
+      const idsFilter = vendureIds
+        .map((id) => `vendureId == ${id}`)
+        .join(" || ");
       const query = `*[_type == "${type}" && (${idsFilter})]`;
       const response = await this.makeSanityRequest({
         method: "GET",
-        endpoint: `data/query/${this.options.sanityDataset || 'production'}?query=${encodeURIComponent(query)}`,
+        endpoint: `data/query/${this.options.sanityDataset || "production"}?query=${encodeURIComponent(query)}`,
       });
 
       if (response.result) {
@@ -295,13 +307,16 @@ export class SanityService implements OnApplicationBootstrap {
     }
 
     const variants = await this.findProductVariants(productId);
-    const variantIds = variants.map(v => v.id);
+    const variantIds = variants.map((v) => v.id);
 
     if (variantIds.length === 0) {
       return [];
     }
 
-    const documentsMap = await this.findDocumentsByVendureIds(variantIds, DOCUMENT_TYPE.product_variant);
+    const documentsMap = await this.findDocumentsByVendureIds(
+      variantIds,
+      DOCUMENT_TYPE.product_variant,
+    );
 
     const documentIds: string[] = [];
     for (const [vendureId, doc] of documentsMap) {
@@ -329,7 +344,10 @@ export class SanityService implements OnApplicationBootstrap {
         return null;
       }
 
-      const document = await this.findDocumentByVendureId(product.id, DOCUMENT_TYPE.product);
+      const document = await this.findDocumentByVendureId(
+        product.id,
+        DOCUMENT_TYPE.product,
+      );
       return document?._id || null;
     } catch (error) {
       Logger.error(
@@ -345,27 +363,34 @@ export class SanityService implements OnApplicationBootstrap {
     defaultLanguageCode: LanguageCode,
     productSlug?: string | null,
   ): Promise<void> {
-    const data = await this.transformProductData(
-      product,
-      defaultLanguageCode,
-      productSlug,
-    );
-    if (!data) {
-      Logger.error(
-        `Cannot create document: no valid translation data for product ${product.id}`,
+    try {
+      const data = await this.transformProductData(
+        product,
+        defaultLanguageCode,
+        productSlug,
       );
-      return;
+      if (!data) {
+        Logger.error(
+          `Cannot create document: no valid translation data for product ${product.id}`,
+        );
+        return;
+      }
+
+      const result = await this.makeSanityRequest({
+        method: "POST",
+        endpoint: `data/mutate/${this.options.sanityDataset || "production"}`,
+        data: { mutations: [{ create: data }] },
+      });
+
+      Logger.info(
+        `Successfully created document for product ${product.id} with Sanity ID: ${result.results?.[0]?.id}`,
+      );
+    } catch (error) {
+      Logger.error(
+        `Failed to create document for product ${product.id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw error;
     }
-
-    const result = await this.makeSanityRequest({
-      method: "POST",
-      endpoint: `data/mutate/${this.options.sanityDataset || 'production'}`,
-      data: { mutations: [{ create: data }] },
-    });
-
-    Logger.info(
-      `Created document for product ${product.id} with Sanity ID: ${result.results?.[0]?.id}`,
-    );
   }
 
   private async updateDocumentFromProduct(
@@ -373,7 +398,10 @@ export class SanityService implements OnApplicationBootstrap {
     defaultLanguageCode: LanguageCode,
     productSlug?: string | null,
   ): Promise<void> {
-    const existingDocument = await this.findDocumentByVendureId(product.id, DOCUMENT_TYPE.product);
+    const existingDocument = await this.findDocumentByVendureId(
+      product.id,
+      DOCUMENT_TYPE.product,
+    );
 
     if (!existingDocument) {
       Logger.warn(
@@ -397,7 +425,7 @@ export class SanityService implements OnApplicationBootstrap {
 
     await this.makeSanityRequest({
       method: "POST",
-      endpoint: `data/mutate/${this.options.sanityDataset || 'production'}`,
+      endpoint: `data/mutate/${this.options.sanityDataset || "production"}`,
       data: { mutations: [{ patch: { id: existingDocument._id, set: data } }] },
     });
 
@@ -410,7 +438,10 @@ export class SanityService implements OnApplicationBootstrap {
     product: Product,
     defaultLanguageCode: LanguageCode,
   ): Promise<void> {
-    const existingDocument = await this.findDocumentByVendureId(product.id, DOCUMENT_TYPE.product);
+    const existingDocument = await this.findDocumentByVendureId(
+      product.id,
+      DOCUMENT_TYPE.product,
+    );
 
     if (!existingDocument) {
       Logger.warn(
@@ -421,7 +452,7 @@ export class SanityService implements OnApplicationBootstrap {
 
     await this.makeSanityRequest({
       method: "POST",
-      endpoint: `data/mutate/${this.options.sanityDataset || 'production'}`,
+      endpoint: `data/mutate/${this.options.sanityDataset || "production"}`,
       data: { mutations: [{ delete: { id: existingDocument._id } }] },
     });
 
@@ -436,28 +467,35 @@ export class SanityService implements OnApplicationBootstrap {
     variantSlug: string,
     collections?: Collection[],
   ): Promise<void> {
-    const data = await this.transformVariantData(
-      variant,
-      defaultLanguageCode,
-      variantSlug,
-      collections,
-    );
-    if (!data) {
-      Logger.error(
-        `Cannot create document: no valid translation data for variant ${variant.id}`,
+    try {
+      const data = await this.transformVariantData(
+        variant,
+        defaultLanguageCode,
+        variantSlug,
+        collections,
       );
-      return;
+      if (!data) {
+        Logger.error(
+          `Cannot create document: no valid translation data for variant ${variant.id}`,
+        );
+        return;
+      }
+
+      const result = await this.makeSanityRequest({
+        method: "POST",
+        endpoint: `data/mutate/${this.options.sanityDataset || "production"}`,
+        data: { mutations: [{ create: data }] },
+      });
+
+      Logger.info(
+        `Successfully created document for variant ${variant.id} with Sanity ID: ${result.results?.[0]?.id}`,
+      );
+    } catch (error) {
+      Logger.error(
+        `Failed to create document for variant ${variant.id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw error;
     }
-
-    const result = await this.makeSanityRequest({
-      method: "POST",
-      endpoint: `data/mutate/${this.options.sanityDataset || 'production'}`,
-      data: { mutations: [{ create: data }] },
-    });
-
-    Logger.info(
-      `Created document for variant ${variant.id} with Sanity ID: ${result.results?.[0]?.id}`,
-    );
   }
 
   private async updateDocumentFromVariant(
@@ -466,7 +504,10 @@ export class SanityService implements OnApplicationBootstrap {
     variantSlug: string,
     collections?: Collection[],
   ): Promise<void> {
-    const existingDocument = await this.findDocumentByVendureId(variant.id, DOCUMENT_TYPE.product_variant);
+    const existingDocument = await this.findDocumentByVendureId(
+      variant.id,
+      DOCUMENT_TYPE.product_variant,
+    );
 
     if (!existingDocument) {
       Logger.warn(
@@ -496,7 +537,7 @@ export class SanityService implements OnApplicationBootstrap {
 
     await this.makeSanityRequest({
       method: "POST",
-      endpoint: `data/mutate/${this.options.sanityDataset || 'production'}`,
+      endpoint: `data/mutate/${this.options.sanityDataset || "production"}`,
       data: { mutations: [{ patch: { id: existingDocument._id, set: data } }] },
     });
 
@@ -510,7 +551,10 @@ export class SanityService implements OnApplicationBootstrap {
     defaultLanguageCode: LanguageCode,
     variantSlug: string,
   ): Promise<void> {
-    const existingDocument = await this.findDocumentByVendureId(variant.id, DOCUMENT_TYPE.product_variant);
+    const existingDocument = await this.findDocumentByVendureId(
+      variant.id,
+      DOCUMENT_TYPE.product_variant,
+    );
 
     if (!existingDocument) {
       Logger.warn(
@@ -521,7 +565,7 @@ export class SanityService implements OnApplicationBootstrap {
 
     await this.makeSanityRequest({
       method: "POST",
-      endpoint: `data/mutate/${this.options.sanityDataset || 'production'}`,
+      endpoint: `data/mutate/${this.options.sanityDataset || "production"}`,
       data: { mutations: [{ delete: { id: existingDocument._id } }] },
     });
 
@@ -536,28 +580,35 @@ export class SanityService implements OnApplicationBootstrap {
     collectionSlug?: string | null,
     variants?: ProductVariant[],
   ): Promise<void> {
-    const data = await this.transformCollectionData(
-      collection,
-      defaultLanguageCode,
-      collectionSlug,
-      variants,
-    );
-    if (!data) {
-      Logger.error(
-        `Cannot create document: no valid translation data for collection ${collection.id}`,
+    try {
+      const data = await this.transformCollectionData(
+        collection,
+        defaultLanguageCode,
+        collectionSlug,
+        variants,
       );
-      return;
+      if (!data) {
+        Logger.error(
+          `Cannot create document: no valid translation data for collection ${collection.id}`,
+        );
+        return;
+      }
+
+      const result = await this.makeSanityRequest({
+        method: "POST",
+        endpoint: `data/mutate/${this.options.sanityDataset || "production"}`,
+        data: { mutations: [{ create: data }] },
+      });
+
+      Logger.info(
+        `Successfully created document for collection ${collection.id} with Sanity ID: ${result.results?.[0]?.id}`,
+      );
+    } catch (error) {
+      Logger.error(
+        `Failed to create document for collection ${collection.id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw error;
     }
-
-    const result = await this.makeSanityRequest({
-      method: "POST",
-      endpoint: `data/mutate/${this.options.sanityDataset || 'production'}`,
-      data: { mutations: [{ create: data }] },
-    });
-
-    Logger.info(
-      `Created document for collection ${collection.id} with Sanity ID: ${result.results?.[0]?.id}`,
-    );
   }
 
   private async updateDocumentFromCollection(
@@ -566,7 +617,10 @@ export class SanityService implements OnApplicationBootstrap {
     collectionSlug?: string | null,
     variants?: ProductVariant[],
   ): Promise<void> {
-    const existingDocument = await this.findDocumentByVendureId(collection.id, DOCUMENT_TYPE.collection);
+    const existingDocument = await this.findDocumentByVendureId(
+      collection.id,
+      DOCUMENT_TYPE.collection,
+    );
 
     if (!existingDocument) {
       Logger.warn(
@@ -596,7 +650,7 @@ export class SanityService implements OnApplicationBootstrap {
 
     await this.makeSanityRequest({
       method: "POST",
-      endpoint: `data/mutate/${this.options.sanityDataset || 'production'}`,
+      endpoint: `data/mutate/${this.options.sanityDataset || "production"}`,
       data: { mutations: [{ patch: { id: existingDocument._id, set: data } }] },
     });
 
@@ -609,7 +663,10 @@ export class SanityService implements OnApplicationBootstrap {
     collection: Collection,
     defaultLanguageCode: LanguageCode,
   ): Promise<void> {
-    const existingDocument = await this.findDocumentByVendureId(collection.id, DOCUMENT_TYPE.collection);
+    const existingDocument = await this.findDocumentByVendureId(
+      collection.id,
+      DOCUMENT_TYPE.collection,
+    );
 
     if (!existingDocument) {
       Logger.warn(
@@ -620,7 +677,7 @@ export class SanityService implements OnApplicationBootstrap {
 
     await this.makeSanityRequest({
       method: "POST",
-      endpoint: `data/mutate/${this.options.sanityDataset || 'production'}`,
+      endpoint: `data/mutate/${this.options.sanityDataset || "production"}`,
       data: { mutations: [{ delete: { id: existingDocument._id } }] },
     });
 
@@ -647,22 +704,11 @@ export class SanityService implements OnApplicationBootstrap {
       return undefined;
     }
 
-    const parentProductDocumentId = await this.findParentProductDocumentId(
-      variant,
-      defaultLanguageCode,
-    );
-
-    const collectionDocumentIds: string[] = [];
-    if (collections && collections.length > 0) {
-      const collectionIds = collections.map(c => c.id);
-      const documentsMap = await this.findDocumentsByVendureIds(collectionIds, DOCUMENT_TYPE.collection);
-
-      for (const [vendureId, doc] of documentsMap) {
-        if (doc?._id) {
-          collectionDocumentIds.push(doc._id);
-        }
-      }
-    }
+    // Run parent product and collection lookups in parallel
+    const [parentProductDocumentId, collectionDocumentIds] = await Promise.all([
+      this.findParentProductDocumentId(variant, defaultLanguageCode),
+      this.getCollectionDocumentIds(collections),
+    ]);
 
     const result = {
       _type: DOCUMENT_TYPE.product_variant,
@@ -671,11 +717,13 @@ export class SanityService implements OnApplicationBootstrap {
       slug: {
         current: variantSlug,
       },
-      vendureProduct: parentProductDocumentId ? {
-        _type: "reference",
-        _ref: parentProductDocumentId,
-      } : undefined,
-      vendureCollecitons: collectionDocumentIds.map(id => ({
+      vendureProduct: parentProductDocumentId
+        ? {
+            _type: "reference",
+            _ref: parentProductDocumentId,
+          }
+        : undefined,
+      vendureCollecitons: collectionDocumentIds.map((id) => ({
         _type: "reference",
         _ref: id,
       })),
@@ -719,7 +767,7 @@ export class SanityService implements OnApplicationBootstrap {
       slug: {
         current: slug,
       },
-      vendureVariants: variantDocumentIds.map(id => ({
+      vendureVariants: variantDocumentIds.map((id) => ({
         _type: "reference",
         _ref: id,
       })),
@@ -753,8 +801,11 @@ export class SanityService implements OnApplicationBootstrap {
 
     const variantDocumentIds: string[] = [];
     if (variants && variants.length > 0) {
-      const variantIds = variants.map(v => v.id);
-      const documentsMap = await this.findDocumentsByVendureIds(variantIds, DOCUMENT_TYPE.product_variant);
+      const variantIds = variants.map((v) => v.id);
+      const documentsMap = await this.findDocumentsByVendureIds(
+        variantIds,
+        DOCUMENT_TYPE.product_variant,
+      );
 
       for (const [vendureId, doc] of documentsMap) {
         if (doc?._id) {
@@ -770,13 +821,33 @@ export class SanityService implements OnApplicationBootstrap {
       slug: {
         current: slug,
       },
-      vendureProductVariants: variantDocumentIds.map(id => ({
+      vendureProductVariants: variantDocumentIds.map((id) => ({
         _type: "reference",
         _ref: id,
       })),
     };
 
     return result;
+  }
+
+  private async getCollectionDocumentIds(collections?: Collection[]): Promise<string[]> {
+    if (!collections || collections.length === 0) {
+      return [];
+    }
+
+    const collectionIds = collections.map((c) => c.id);
+    const documentsMap = await this.findDocumentsByVendureIds(
+      collectionIds,
+      DOCUMENT_TYPE.collection,
+    );
+
+    const documentIds: string[] = [];
+    for (const [vendureId, doc] of documentsMap) {
+      if (doc?._id) {
+        documentIds.push(doc._id);
+      }
+    }
+    return documentIds;
   }
 
   private getSanityHeaders(): Record<string, string> {
@@ -791,15 +862,16 @@ export class SanityService implements OnApplicationBootstrap {
   }
 
   private async enforceRateLimit(): Promise<void> {
-    const now = Date.now();
-    const timeSinceLastCall = now - this.lastApiCallTime;
-
-    if (timeSinceLastCall < this.rateLimitDelay) {
-      const waitTime = this.rateLimitDelay - timeSinceLastCall;
-      await new Promise((resolve) => setTimeout(resolve, waitTime));
-    }
-
-    this.lastApiCallTime = Date.now();
+    // Create a new promise that waits for the current queue + rate limit delay
+    const currentRequest = this.requestQueue.then(async () => {
+      await new Promise((resolve) => setTimeout(resolve, this.rateLimitDelay));
+    });
+    
+    // Update the queue to point to this request
+    this.requestQueue = currentRequest;
+    
+    // Wait for our turn
+    await currentRequest;
   }
 
   private async makeSanityRequest({
