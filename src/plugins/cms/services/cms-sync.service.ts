@@ -61,10 +61,11 @@ export class CmsSyncService implements OnApplicationBootstrap {
   }
 
   /**
-   * Finds all collections that contain a given variant
-   * @param ctx The request context
-   * @param variantId The ProductVariant ID
-   * @returns Array of Collection entities
+   * Finds all collections that contain a given variant.
+   * Searches through all collections to find which ones include the specified variant.
+   * @param ctx - The request context for authorization
+   * @param variantId - The ProductVariant ID to search for
+   * @returns Promise<Collection[]> - Array of Collection entities containing the variant
    */
   async findCollectionsForVariant(
     ctx: RequestContext,
@@ -101,10 +102,11 @@ export class CmsSyncService implements OnApplicationBootstrap {
   }
 
   /**
-   * Finds all variants that belong to a given collection
-   * @param ctx The request context
-   * @param collectionId The Collection ID
-   * @returns Array of ProductVariant entities
+   * Finds all variants that belong to a given collection.
+   * Retrieves all ProductVariant entities associated with the specified collection.
+   * @param ctx - The request context for authorization
+   * @param collectionId - The Collection ID to find variants for
+   * @returns Promise<ProductVariant[]> - Array of ProductVariant entities in the collection
    */
   async findVariantsForCollection(
     ctx: RequestContext,
@@ -344,6 +346,11 @@ export class CmsSyncService implements OnApplicationBootstrap {
     }
   }
 
+  /**
+   * Syncs all products in the database to the CMS.
+   * Uses parallel batch processing for improved performance.
+   * @returns Promise<SyncResult> - Summary of sync operation results including counts and errors
+   */
   async syncAllProductsToCms(): Promise<{
     success: boolean;
     totalProducts: number;
@@ -374,6 +381,11 @@ export class CmsSyncService implements OnApplicationBootstrap {
     };
   }
 
+  /**
+   * Syncs all entity types to the CMS in sequence.
+   * Runs product, variant, and collection syncing operations one after another.
+   * @returns Promise<void> - Completes when all entity types have been synced
+   */
   async syncAllEntityTypes() {
     await this.syncAllProductsToCms();
     await this.syncAllProductVariantsToCms();
@@ -381,8 +393,9 @@ export class CmsSyncService implements OnApplicationBootstrap {
   }
 
   /**
-   * Syncs all product variants in the database to the CMS with rate limiting and retry logic
-   * @returns Summary of sync results
+   * Syncs all product variants in the database to the CMS.
+   * Uses parallel batch processing with rate limiting and retry logic.
+   * @returns Promise<SyncResult> - Summary of sync operation results including counts and errors
    */
   async syncAllProductVariantsToCms(): Promise<{
     success: boolean;
@@ -415,8 +428,9 @@ export class CmsSyncService implements OnApplicationBootstrap {
   }
 
   /**
-   * Syncs all collections in the database to the CMS with rate limiting and retry logic
-   * @returns Summary of sync results
+   * Syncs all collections in the database to the CMS.
+   * Uses parallel batch processing with rate limiting and retry logic.
+   * @returns Promise<SyncResult> - Summary of sync operation results including counts and errors
    */
   async syncAllCollectionsToCms(): Promise<{
     success: boolean;
@@ -448,6 +462,12 @@ export class CmsSyncService implements OnApplicationBootstrap {
     };
   }
 
+  /**
+   * Syncs a single product to the CMS.
+   * Handles create, update, or delete operations based on job data.
+   * @param jobData - The job data containing entity info and operation type
+   * @returns Promise<SyncResponse> - Result of the sync operation with success status and message
+   */
   async syncProductToCms(jobData: SyncJobData): Promise<SyncResponse> {
     try {
       // Fetch fresh product data from database
@@ -498,6 +518,12 @@ export class CmsSyncService implements OnApplicationBootstrap {
     }
   }
 
+  /**
+   * Syncs a single product variant to the CMS.
+   * Handles create, update, or delete operations and resolves related collections.
+   * @param jobData - The job data containing entity info and operation type
+   * @returns Promise<SyncResponse> - Result of the sync operation with success status and message
+   */
   async syncVariantToCms(jobData: SyncJobData): Promise<SyncResponse> {
     try {
       // Create RequestContext for service calls
@@ -562,6 +588,12 @@ export class CmsSyncService implements OnApplicationBootstrap {
     }
   }
 
+  /**
+   * Syncs a single collection to the CMS.
+   * Handles create, update, or delete operations and resolves related variants.
+   * @param jobData - The job data containing entity info and operation type
+   * @returns Promise<SyncResponse> - Result of the sync operation with success status and message
+   */
   async syncCollectionToCms(jobData: SyncJobData): Promise<SyncResponse> {
     try {
       // Create RequestContext for service calls
