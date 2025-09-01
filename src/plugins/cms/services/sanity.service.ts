@@ -724,6 +724,7 @@ export class SanityService implements OnApplicationBootstrap {
           }
         : undefined,
       vendureCollecitons: collectionDocumentIds.map((id) => ({
+        _key: `collection-${id}`,
         _type: "reference",
         _ref: id,
       })),
@@ -768,6 +769,7 @@ export class SanityService implements OnApplicationBootstrap {
         current: slug,
       },
       vendureVariants: variantDocumentIds.map((id) => ({
+        _key: `variant-${id}`,
         _type: "reference",
         _ref: id,
       })),
@@ -822,6 +824,7 @@ export class SanityService implements OnApplicationBootstrap {
         current: slug,
       },
       vendureProductVariants: variantDocumentIds.map((id) => ({
+        _key: `variant-${id}`,
         _type: "reference",
         _ref: id,
       })),
