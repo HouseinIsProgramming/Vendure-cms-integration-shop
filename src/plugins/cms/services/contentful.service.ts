@@ -870,6 +870,9 @@ export class ContentfulService implements OnApplicationBootstrap {
       return undefined;
     }
 
+    // Map to Contentful locale format
+    const contentfulLocale = this.mapToContentfulLocale(defaultLanguageCode);
+
     // Find parent product entry for this variant
     const parentProductEntryId = await this.findParentProductEntryId(
       variant,
@@ -917,17 +920,17 @@ export class ContentfulService implements OnApplicationBootstrap {
     const result = {
       fields: {
         name: {
-          [defaultLanguageCode]: defaultTranslation?.name,
+          [contentfulLocale]: defaultTranslation?.name,
         },
         slug: {
-          [defaultLanguageCode]: variantSlug,
+          [contentfulLocale]: variantSlug,
         },
         vendureId: {
-          [defaultLanguageCode]: variant.id.toString(),
+          [contentfulLocale]: variant.id.toString(),
         },
         ...(parentProductEntryId && {
           parentProduct: {
-            [defaultLanguageCode]: {
+            [contentfulLocale]: {
               sys: {
                 type: "Link",
                 linkType: "Entry",
@@ -938,13 +941,73 @@ export class ContentfulService implements OnApplicationBootstrap {
         }),
         ...(collectionEntryRefs.length > 0 && {
           collections: {
-            [defaultLanguageCode]: collectionEntryRefs,
+            [contentfulLocale]: collectionEntryRefs,
           },
         }),
       },
     };
 
     return result;
+  }
+
+  private contentfulLocales: string[] = [];
+  private defaultContentfulLocale: string = 'en-US';
+
+  /**
+   * Fetches available locales from Contentful space
+   */
+  private async fetchContentfulLocales(): Promise<void> {
+    try {
+      const response = await this.makeContentfulRequest({
+        method: "GET",
+        endpoint: "locales",
+        skipInitializationCheck: true,
+      });
+
+      if (response.items) {
+        this.contentfulLocales = response.items.map((locale: any) => locale.code);
+        
+        // Find the default locale
+        const defaultLocale = response.items.find((locale: any) => locale.default);
+        if (defaultLocale) {
+          this.defaultContentfulLocale = defaultLocale.code;
+        }
+        
+        Logger.info(`Fetched Contentful locales: ${this.contentfulLocales.join(', ')}`);
+        Logger.info(`Default Contentful locale: ${this.defaultContentfulLocale}`);
+      }
+    } catch (error) {
+      Logger.warn(`Failed to fetch Contentful locales, using fallback mapping: ${error}`);
+    }
+  }
+
+  /**
+   * Maps Vendure language codes to Contentful locale codes
+   */
+  private mapToContentfulLocale(vendureLanguageCode: LanguageCode): string {
+    // If we haven't fetched locales yet, use static mapping
+    if (this.contentfulLocales.length === 0) {
+      const localeMap: Record<string, string> = {
+        'en': 'en-US',
+        'de': 'de-DE',
+        'es': 'es-ES',
+        'fr': 'fr-FR',
+        'it': 'it-IT',
+        'nl': 'nl-NL',
+        'pt': 'pt-BR',
+        'ja': 'ja-JP',
+        'zh': 'zh-CN',
+      };
+      
+      return localeMap[vendureLanguageCode] || this.defaultContentfulLocale;
+    }
+
+    // Try to find a matching locale in the fetched locales
+    const matchingLocale = this.contentfulLocales.find(locale => 
+      locale.toLowerCase().startsWith(vendureLanguageCode.toLowerCase())
+    );
+    
+    return matchingLocale || this.defaultContentfulLocale;
   }
 
   private async transformProductData(
@@ -964,42 +1027,26 @@ export class ContentfulService implements OnApplicationBootstrap {
       return undefined;
     }
 
-    // Find all variant entries for this product
-    const variantEntryIds = await this.findVariantEntriesForProductIds(
-      product.id,
-      defaultLanguageCode,
-      productSlug,
-    );
-
     const slug = this.translationUtils.getSlugByLanguage(
       product.translations,
       defaultLanguageCode,
     );
 
-    const variantEntryRefs = variantEntryIds.map((id) => ({
-      sys: {
-        type: "Link",
-        linkType: "Entry",
-        id: id,
-      },
-    }));
+    // Map to Contentful locale format
+    const contentfulLocale = this.mapToContentfulLocale(defaultLanguageCode);
 
+    // For now, only sync basic product fields without variants
     const result = {
       fields: {
         name: {
-          [defaultLanguageCode]: defaultTranslation?.name,
+          [contentfulLocale]: defaultTranslation?.name,
         },
         slug: {
-          [defaultLanguageCode]: slug,
+          [contentfulLocale]: slug,
         },
         vendureId: {
-          [defaultLanguageCode]: product.id.toString(),
+          [contentfulLocale]: product.id.toString(),
         },
-        ...(variantEntryRefs.length > 0 && {
-          variants: {
-            [defaultLanguageCode]: variantEntryRefs,
-          },
-        }),
       },
     };
 
@@ -1072,20 +1119,23 @@ export class ContentfulService implements OnApplicationBootstrap {
       }
     }
 
+    // Map to Contentful locale format
+    const contentfulLocale = this.mapToContentfulLocale(defaultLanguageCode);
+
     const result = {
       fields: {
         name: {
-          [defaultLanguageCode]: defaultTranslation?.name,
+          [contentfulLocale]: defaultTranslation?.name,
         },
         slug: {
-          [defaultLanguageCode]: slug,
+          [contentfulLocale]: slug,
         },
         vendureId: {
-          [defaultLanguageCode]: collection.id.toString(),
+          [contentfulLocale]: collection.id.toString(),
         },
         ...(variantEntryRefs.length > 0 && {
           variants: {
-            [defaultLanguageCode]: variantEntryRefs,
+            [contentfulLocale]: variantEntryRefs,
           },
         }),
       },
@@ -1113,6 +1163,9 @@ export class ContentfulService implements OnApplicationBootstrap {
   }
 
   async ensureContentfulContentTypesExists() {
+    // First, fetch available locales from Contentful
+    await this.fetchContentfulLocales();
+    
     const contentCheck = await this.checkContentTypes();
     
     const shapeContentTypeData = (contentType: keyof typeof CONTENT_TYPE_ID) => {
@@ -1374,6 +1427,16 @@ export class ContentfulService implements OnApplicationBootstrap {
     await this.enforceRateLimit();
 
     Logger.debug(`Making Contentful API request: ${method} ${url}`);
+    
+    // Log the request details
+    console.log('\n=== CONTENTFUL API REQUEST ===');
+    console.log(`${method} ${url}`);
+    console.log('Headers:', JSON.stringify(config.headers, null, 2));
+    if (config.body) {
+      console.log('Body:', config.body);
+    }
+    console.log('===============================\n');
+    
     const response = await fetch(url, config);
 
     if (!response.ok) {
