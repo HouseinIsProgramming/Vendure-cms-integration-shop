@@ -26,8 +26,7 @@ export class ContentfulService implements OnApplicationBootstrap {
   private isInitialized = false;
   private readonly translationUtils = new TranslationUtils();
   private lastApiCallTime = 0;
-  private readonly rateLimitDelay = 150; // 150ms between calls = max ~6.7 calls/second (under Contentful's 7/sec limit)
-
+  private readonly rateLimitDelay = 50; // 150ms between calls, adjust as needed
   constructor(
     private connection: TransactionalConnection,
     private processContext: ProcessContext,
@@ -268,7 +267,9 @@ export class ContentfulService implements OnApplicationBootstrap {
 
     try {
       // Contentful supports comma-separated values for "in" queries
-      const valuesParam = fieldValues.map(v => encodeURIComponent(v)).join(",");
+      const valuesParam = fieldValues
+        .map((v) => encodeURIComponent(v))
+        .join(",");
       const response = await this.makeContentfulRequest({
         method: "GET",
         endpoint: `${this.entriesPath}?content_type=${contentTypeId}&fields.${fieldName}[in]=${valuesParam}`,
@@ -951,7 +952,7 @@ export class ContentfulService implements OnApplicationBootstrap {
   }
 
   private contentfulLocales: string[] = [];
-  private defaultContentfulLocale: string = 'en-US';
+  private defaultContentfulLocale: string = "en-US";
 
   /**
    * Fetches available locales from Contentful space
@@ -965,19 +966,29 @@ export class ContentfulService implements OnApplicationBootstrap {
       });
 
       if (response.items) {
-        this.contentfulLocales = response.items.map((locale: any) => locale.code);
-        
+        this.contentfulLocales = response.items.map(
+          (locale: any) => locale.code,
+        );
+
         // Find the default locale
-        const defaultLocale = response.items.find((locale: any) => locale.default);
+        const defaultLocale = response.items.find(
+          (locale: any) => locale.default,
+        );
         if (defaultLocale) {
           this.defaultContentfulLocale = defaultLocale.code;
         }
-        
-        Logger.info(`Fetched Contentful locales: ${this.contentfulLocales.join(', ')}`);
-        Logger.info(`Default Contentful locale: ${this.defaultContentfulLocale}`);
+
+        Logger.info(
+          `Fetched Contentful locales: ${this.contentfulLocales.join(", ")}`,
+        );
+        Logger.info(
+          `Default Contentful locale: ${this.defaultContentfulLocale}`,
+        );
       }
     } catch (error) {
-      Logger.warn(`Failed to fetch Contentful locales, using fallback mapping: ${error}`);
+      Logger.warn(
+        `Failed to fetch Contentful locales, using fallback mapping: ${error}`,
+      );
     }
   }
 
@@ -988,25 +999,25 @@ export class ContentfulService implements OnApplicationBootstrap {
     // If we haven't fetched locales yet, use static mapping
     if (this.contentfulLocales.length === 0) {
       const localeMap: Record<string, string> = {
-        'en': 'en-US',
-        'de': 'de-DE',
-        'es': 'es-ES',
-        'fr': 'fr-FR',
-        'it': 'it-IT',
-        'nl': 'nl-NL',
-        'pt': 'pt-BR',
-        'ja': 'ja-JP',
-        'zh': 'zh-CN',
+        en: "en-US",
+        de: "de-DE",
+        es: "es-ES",
+        fr: "fr-FR",
+        it: "it-IT",
+        nl: "nl-NL",
+        pt: "pt-BR",
+        ja: "ja-JP",
+        zh: "zh-CN",
       };
-      
+
       return localeMap[vendureLanguageCode] || this.defaultContentfulLocale;
     }
 
     // Try to find a matching locale in the fetched locales
-    const matchingLocale = this.contentfulLocales.find(locale => 
-      locale.toLowerCase().startsWith(vendureLanguageCode.toLowerCase())
+    const matchingLocale = this.contentfulLocales.find((locale) =>
+      locale.toLowerCase().startsWith(vendureLanguageCode.toLowerCase()),
     );
-    
+
     return matchingLocale || this.defaultContentfulLocale;
   }
 
@@ -1026,6 +1037,16 @@ export class ContentfulService implements OnApplicationBootstrap {
       );
       return undefined;
     }
+
+    // Debug logging to understand the translation data
+    console.log(`\n=== PRODUCT TRANSLATION DEBUG ===`);
+    console.log(`Product ID: ${product.id}`);
+    console.log(
+      `Default Translation:`,
+      JSON.stringify(defaultTranslation, null, 2),
+    );
+    console.log(`Product Slug Param:`, productSlug);
+    console.log(`==================================\n`);
 
     const slug = this.translationUtils.getSlugByLanguage(
       product.translations,
@@ -1152,7 +1173,10 @@ export class ContentfulService implements OnApplicationBootstrap {
     });
 
     const checkIfExists = (contentTypeId: string) => {
-      return response.items.findIndex((ct: any) => ct.sys.id === contentTypeId) !== -1;
+      return (
+        response.items.findIndex((ct: any) => ct.sys.id === contentTypeId) !==
+        -1
+      );
     };
 
     return {
@@ -1165,10 +1189,12 @@ export class ContentfulService implements OnApplicationBootstrap {
   async ensureContentfulContentTypesExists() {
     // First, fetch available locales from Contentful
     await this.fetchContentfulLocales();
-    
+
     const contentCheck = await this.checkContentTypes();
-    
-    const shapeContentTypeData = (contentType: keyof typeof CONTENT_TYPE_ID) => {
+
+    const shapeContentTypeData = (
+      contentType: keyof typeof CONTENT_TYPE_ID,
+    ) => {
       const displayNames = {
         product: "Vendure Product",
         product_variant: "Vendure Product Variant",
@@ -1314,14 +1340,14 @@ export class ContentfulService implements OnApplicationBootstrap {
         Logger.info(
           `Created ${response.name} content type with ID ${response.sys.id}`,
         );
-        
+
         // Fetch the latest version before publishing to avoid version mismatch
         const latestContentType = await this.makeContentfulRequest({
           method: "GET",
           endpoint: `${this.contentTypesPath}/${response.sys.id}`,
           skipInitializationCheck: true,
         });
-        
+
         // Activate the content type with the latest version
         await this.makeContentfulRequest({
           method: "PUT",
@@ -1331,7 +1357,7 @@ export class ContentfulService implements OnApplicationBootstrap {
           },
           skipInitializationCheck: true,
         });
-        
+
         Logger.info(`Activated content type ${response.sys.id}`);
       }
     };
@@ -1350,7 +1376,7 @@ export class ContentfulService implements OnApplicationBootstrap {
       const response = await createOrUpdateContentType("collection");
       await handleContentTypeResponse(response);
     }
-    
+
     this.isInitialized = true;
   }
 
@@ -1427,16 +1453,16 @@ export class ContentfulService implements OnApplicationBootstrap {
     await this.enforceRateLimit();
 
     Logger.debug(`Making Contentful API request: ${method} ${url}`);
-    
+
     // Log the request details
-    console.log('\n=== CONTENTFUL API REQUEST ===');
+    console.log("\n=== CONTENTFUL API REQUEST ===");
     console.log(`${method} ${url}`);
-    console.log('Headers:', JSON.stringify(config.headers, null, 2));
+    console.log("Headers:", JSON.stringify(config.headers, null, 2));
     if (config.body) {
-      console.log('Body:', config.body);
+      console.log("Body:", config.body);
     }
-    console.log('===============================\n');
-    
+    console.log("===============================\n");
+
     const response = await fetch(url, config);
 
     if (!response.ok) {
