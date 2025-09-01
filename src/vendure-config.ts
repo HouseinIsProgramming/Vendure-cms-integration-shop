@@ -64,10 +64,10 @@ export const config: VendureConfig = {
     type: "better-sqlite3",
     // See the README.md "Migrations" section for an explanation of
     // the `synchronize` and `migrations` options.
-    synchronize: false,
+    synchronize: true,
     migrations: [path.join(__dirname, "./migrations/*.+(js|ts)")],
     logging: false,
-    database: path.join(__dirname, "../vendure.sqlite"),
+    database: path.join(__dirname, "../vendure2.sqlite"),
   },
   paymentOptions: {
     paymentMethodHandlers: [dummyPaymentHandler],
@@ -119,8 +119,10 @@ export const config: VendureConfig = {
       },
     }),
     CmsPlugin.init({
-      cmsApiKey: process.env.STORYBLOK_API_KEY,
-      storyblokSpaceId: process.env.STORYBLOK_SPACE_ID,
+      sanityApiKey: process.env.SANITY_API_KEY,
+      sanityProjectId: process.env.SANITY_PROJECT_ID,
+      sanityDataset: process.env.SANITY_DATASET || 'production',
+      sanityOrigin: process.env.SANITY_ORIGIN,
     }),
   ],
 };
