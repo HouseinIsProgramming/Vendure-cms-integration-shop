@@ -1038,15 +1038,6 @@ export class ContentfulService implements OnApplicationBootstrap {
       return undefined;
     }
 
-    // Debug logging to understand the translation data
-    console.log(`\n=== PRODUCT TRANSLATION DEBUG ===`);
-    console.log(`Product ID: ${product.id}`);
-    console.log(
-      `Default Translation:`,
-      JSON.stringify(defaultTranslation, null, 2),
-    );
-    console.log(`Product Slug Param:`, productSlug);
-    console.log(`==================================\n`);
 
     const slug = this.translationUtils.getSlugByLanguage(
       product.translations,
@@ -1454,14 +1445,6 @@ export class ContentfulService implements OnApplicationBootstrap {
 
     Logger.debug(`Making Contentful API request: ${method} ${url}`);
 
-    // Log the request details
-    console.log("\n=== CONTENTFUL API REQUEST ===");
-    console.log(`${method} ${url}`);
-    console.log("Headers:", JSON.stringify(config.headers, null, 2));
-    if (config.body) {
-      console.log("Body:", config.body);
-    }
-    console.log("===============================\n");
 
     const response = await fetch(url, config);
 
